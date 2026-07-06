@@ -1,0 +1,51 @@
+include:
+  - compose/connect/compose.yaml
+  - compose/iceberg/compose.yaml
+services:
+  jobmanager:
+    build: .
+    volumes:
+      #- ./app/build/libs/app-all.jar:/opt/flink/usrlib/app-all.jar
+      - ./compose/flink/usrconf:/opt/flink/usrconf
+    depends_on:
+      kafka: { condition: service_healthy }
+      schema-registry: { condition: service_healthy }
+      polaris: { condition: service_healthy }
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        parallelism.default: 2
+    command:
+      - standalone-job
+      - --job-classname
+      - com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.KafkaDynamicIcebergSinkJob
+      - /opt/flink/usrconf/config.properties
+      - /opt/flink/usrconf/secret.properties
+    ports:
+      - 8082:8081
+
+  taskmanager:
+    image: iceberg-flink-kafka-jobmanager:latest
+    # volumes:
+    #   - ./app/build/libs/app-all.jar:/opt/flink/usrlib/app-all.jar
+    depends_on:
+      - jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        parallelism.default: 2
+    command:
+      - taskmanager
+
+  trino:
+    depends_on:
+      polaris: { condition: service_healthy }
+    image: trinodb/trino:482
+    volumes:
+      - ./compose/trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
+    ports:
+      - 8080:8080

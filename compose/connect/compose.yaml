@@ -1,0 +1,88 @@
+# https://github.com/debezium/debezium-examples/blob/c506f2a5f067bf7e8c7314e80d2ee471436a80f9/tutorial/docker-compose-mysql-avro-connector.yaml
+# https://github.com/debezium/debezium-examples/blob/c506f2a5f067bf7e8c7314e80d2ee471436a80f9/tutorial/docker-compose-postgres.yaml
+services:
+  kafka:
+    image: quay.io/debezium/kafka:3.5
+    volumes:
+      - kafka_config:/kafka/config
+      - kafka_data:/kafka/data
+      - kafka_logs:/kafka/logs
+    ports:
+      - 9092:9092
+      - 9093:9093
+    environment:
+      - CLUSTER_ID=oh-sxaDRTcyAr6pFRbXyzA
+      - NODE_ID=1
+      - NODE_ROLE=combined
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_LISTENERS=PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+    healthcheck:
+      test: /kafka/bin/kafka-topics.sh --list --bootstrap-server kafka:9092 || exit 1
+      interval: 20s
+      timeout: 20s
+      retries: 20
+      start_period: 20s
+
+  postgres:
+    image: quay.io/debezium/example-postgres:3.5
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    ports:
+     - 5432:5432
+    environment:
+     - POSTGRES_USER=postgres
+     - POSTGRES_PASSWORD=postgres
+
+  connect:
+    build: .
+    volumes:
+      - connect_config:/kafka/config
+      - connect_data:/kafka/data
+      - connect_logs:/kafka/logs
+      - ./register-postgres.json:/kafka/register-postgres.json
+    ports:
+     - 8083:8083
+    depends_on:
+     - kafka
+     - postgres
+     - schema-registry
+    environment:
+     - BOOTSTRAP_SERVERS=kafka:9092
+     - GROUP_ID=1
+     - CONFIG_STORAGE_TOPIC=my_connect_configs
+     - OFFSET_STORAGE_TOPIC=my_connect_offsets
+     - STATUS_STORAGE_TOPIC=my_connect_statuses
+# For testing newer connector versions, unpack the connector archive into this
+# directory and uncomment the lines below
+#    volumes:
+#     - ./debezium-connector-postgres:/kafka/connect/debezium-connector-postgres
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.0.1
+    volumes:
+      - schema-registry_secrets:/etc/schema-registry/secrets
+    ports:
+     - 8081:8081
+    environment:
+     - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=kafka:9092
+     - SCHEMA_REGISTRY_HOST_NAME=schema-registry
+     - SCHEMA_REGISTRY_LISTENERS=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: curl --fail http://schema-registry:8081/subjects || exit 1
+      interval: 20s
+      timeout: 20s
+      retries: 20
+
+volumes:
+  kafka_config:
+  kafka_data:
+  kafka_logs:
+  postgres_data:
+  connect_config:
+  connect_data:
+  connect_logs:
+  schema-registry_secrets:
