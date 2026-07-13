@@ -9,6 +9,7 @@ plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
     id("com.gradleup.shadow") version "9.4.3"
+    id("com.diffplug.spotless") version "8.8.0"
 }
 
 repositories {
@@ -25,21 +26,34 @@ dependencies {
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-    // This dependency is used by the application.
-    implementation(libs.guava)
-
     compileOnly("org.apache.avro:avro:1.12.1")
     compileOnly("org.apache.flink:flink-streaming-java:2.1.3")
     compileOnly("org.apache.flink:flink-table-api-java:2.1.3")
     compileOnly("org.apache.hadoop:hadoop-common:3.4.3")
     compileOnly("org.apache.iceberg:iceberg-core:1.11.0")
     compileOnly("org.apache.iceberg:iceberg-flink-2.1:1.11.0")
-    compileOnly("org.slf4j:slf4j-api:2.0.17")
 
     implementation("io.confluent:kafka-avro-serializer:8.3.0") {
+      exclude(group = "com.fasterxml.jackson.core", module = "jackson-annotations")
+      exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
+      exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")
+      exclude(group = "com.github.luben", module = "zstd-jni")
+      exclude(group = "com.google.errorprone", module = "error_prone_annotations")
       exclude(group = "org.apache.avro", module = "avro")
+      exclude(group = "org.apache.httpcomponents.client5", module = "httpclient5")
+      exclude(group = "org.checkerframework", module = "checker-qual")
+      exclude(group = "org.slf4j", module = "slf4j-api")
     }
-    implementation("org.apache.flink:flink-connector-kafka:5.0.0-2.2")
+    implementation("org.apache.flink:flink-connector-kafka:5.0.0-2.1") {
+      exclude(group = "com.fasterxml.jackson.core", module = "jackson-annotations")
+      exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
+      exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")
+      exclude(group = "com.github.luben", module = "zstd-jni")
+      exclude(group = "org.slf4j", module = "slf4j-api")
+    }
+    implementation("org.apache.flink:flink-metrics-dropwizard:2.1.3") {
+      exclude(group = "org.slf4j", module = "slf4j-api")
+    }
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
@@ -51,7 +65,13 @@ java {
 
 application {
     // Define the main class for the application.
-    mainClass = "com.github.kinolaev.DataStreamJob"
+    mainClass = "com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.KafkaDynamicIcebergSinkJob"
+}
+
+spotless {
+    java {
+        googleJavaFormat()
+    }
 }
 
 tasks.jar {
@@ -61,7 +81,14 @@ tasks.jar {
 }
 
 tasks.shadowJar {
+    relocate("com.fasterxml.jackson.annotation", "org.apache.iceberg.shaded.com.fasterxml.jackson.annotation")
+    relocate("com.fasterxml.jackson.core", "org.apache.iceberg.shaded.com.fasterxml.jackson.core")
+    relocate("com.fasterxml.jackson.databind", "org.apache.iceberg.shaded.com.fasterxml.jackson.databind")
+    relocate("com.google.errorprone.annotations", "org.apache.iceberg.shaded.com.google.errorprone.annotations")
     relocate("org.apache.avro", "org.apache.iceberg.shaded.org.apache.avro")
+    relocate("org.apache.hc.client5", "org.apache.iceberg.shaded.org.apache.hc.client5")
+    relocate("org.apache.hc.core5", "org.apache.iceberg.shaded.org.apache.hc.core5")
+    relocate("org.checkerframework.checker", "org.apache.iceberg.shaded.org.checkerframework.checker")
 }
 
 tasks.named<Test>("test") {
