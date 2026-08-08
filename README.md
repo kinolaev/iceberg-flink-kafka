@@ -1,8 +1,27 @@
 # Iceberg Flink Kafka Dynamic Sink Job
 
 ```bash
-docker compose up bucket-setup polaris-setup
-docker compose up connect
-docker compose exec connect curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d @register-postgres.json
-docker compose up jobmanager taskmanager
+docker compose up -d rustfs
+docker compose exec rustfs curl \
+  -X PUT http://localhost:9000/warehouse \
+  --aws-sigv4 aws:amz:us-east-1:s3 --user rustfs:rustfs
+docker compose exec rustfs curl \
+  -X PUT http://localhost:9000/iceberg/v1/buckets/warehouse \
+  --aws-sigv4 aws:amz:us-east-1:s3 --user rustfs:rustfs
+docker compose exec rustfs curl \
+  -X POST http://localhost:9000/iceberg/v1/warehouse/namespaces \
+  --aws-sigv4 aws:amz:us-east-1:s3 --user rustfs:rustfs \
+  --json '{"namespace":["public"]}'
+./gradlew shadowJar
+docker compose up
+```
+```bash
+docker compose exec jobmanager flink run -sae \
+  /opt/flink/usrlib/app-all.jar \
+  /opt/flink/usrconf/config.properties \
+  /opt/flink/usrconf/secret.properties
+```
+```bash
+docker compose exec trino trino --execute 'select * from iceberg.public.logicaltypes'
+docker compose exec trino trino --execute 'select * from iceberg.public.partitioned'
 ```

@@ -1,51 +1,87 @@
-include:
-  - compose/connect/compose.yaml
-  - compose/iceberg/compose.yaml
 services:
+  postgres:
+    image: quay.io/debezium/postgres:18-alpine
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./compose/postgres/initdb.d:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_PASSWORD=postgres
+
+  debezium:
+    depends_on:
+      - postgres
+      - redpanda
+    build: compose/debezium
+    volumes:
+      - debezium-conf:/debezium/config
+      - debezium-data:/debezium/data
+      - ./compose/debezium/application.properties:/debezium/config/application.properties
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.12
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092
+      - --advertise-kafka-addr internal://redpanda:9092
+      - --schema-registry-addr internal://0.0.0.0:8081
+      - --mode dev-container
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.8.0
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - SCHEMAREGISTRY_ENABLED=true
+      - SCHEMAREGISTRY_URLS=redpanda:8081
+    ports:
+      - 8080:8080
+
   jobmanager:
+    depends_on:
+      - redpanda
+      - rustfs
     build: .
     volumes:
-      #- ./app/build/libs/app-all.jar:/opt/flink/usrlib/app-all.jar
+      - ./app/build/libs:/opt/flink/usrlib
       - ./compose/flink/usrconf:/opt/flink/usrconf
-    depends_on:
-      kafka: { condition: service_healthy }
-      schema-registry: { condition: service_healthy }
-      polaris: { condition: service_healthy }
     environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 2
-        parallelism.default: 2
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
     command:
-      - standalone-job
-      - --job-classname
-      - com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.KafkaDynamicIcebergSinkJob
-      - /opt/flink/usrconf/config.properties
-      - /opt/flink/usrconf/secret.properties
+      - jobmanager
     ports:
-      - 8082:8081
+      - 8081:8081
 
   taskmanager:
-    image: iceberg-flink-kafka-jobmanager:latest
-    # volumes:
-    #   - ./app/build/libs/app-all.jar:/opt/flink/usrlib/app-all.jar
     depends_on:
       - jobmanager
+    image: iceberg-flink-kafka-jobmanager:latest
+    volumes:
+      - ./app/build/libs:/opt/flink/usrlib
     environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 2
-        parallelism.default: 2
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
     command:
       - taskmanager
 
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.1
+    volumes:
+      - rustfs-data:/data
+    environment:
+      - RUSTFS_ACCESS_KEY=rustfs
+      - RUSTFS_SECRET_KEY=rustfs
+    ports:
+      - 9001:9001
+
   trino:
-    depends_on:
-      polaris: { condition: service_healthy }
-    image: trinodb/trino:482
+    image: trinodb/trino:483
     volumes:
       - ./compose/trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
-    ports:
-      - 8080:8080
+
+volumes:
+  postgres-data:
+  debezium-conf:
+  debezium-data:
+  redpanda-data:
+  rustfs-data:
