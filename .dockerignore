@@ -1,6 +1,8 @@
 *
-!/app/build.gradle.kts
 !/app/src
+!/app/build.gradle.kts
 !/gradle/libs.versions.toml
+!/iceberg-avro-logical-types/src
+!/iceberg-avro-logical-types/build.gradle.kts
 !/gradle.properties
 !/settings.gradle.kts

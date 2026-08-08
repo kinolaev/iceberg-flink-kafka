@@ -9,7 +9,6 @@ plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
     id("com.gradleup.shadow") version "9.4.3"
-    id("com.diffplug.spotless") version "8.8.0"
 }
 
 repositories {
@@ -32,6 +31,7 @@ dependencies {
     compileOnly("org.apache.hadoop:hadoop-common:3.4.3")
     compileOnly("org.apache.iceberg:iceberg-core:1.11.0")
     compileOnly("org.apache.iceberg:iceberg-flink-2.1:1.11.0")
+    compileOnly(project(":iceberg-avro-logical-types"))
 
     implementation("io.confluent:kafka-avro-serializer:8.3.0") {
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-annotations")
@@ -66,12 +66,6 @@ java {
 application {
     // Define the main class for the application.
     mainClass = "com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.KafkaDynamicIcebergSinkJob"
-}
-
-spotless {
-    java {
-        googleJavaFormat()
-    }
 }
 
 tasks.jar {

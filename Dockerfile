@@ -2,16 +2,8 @@ FROM gradle:9.2.1-jdk21-alpine AS build
 
 USER gradle
 WORKDIR /home/gradle/project
-COPY --chown=gradle:gradle --parents \
-  app/build.gradle.kts \
-  gradle/libs.versions.toml \
-  gradle.properties \
-  settings.gradle.kts \
-  ./
-RUN gradle --no-daemon shadowJar --dry-run
-
-COPY --chown=gradle:gradle app/src app/src
-RUN gradle --no-daemon shadowJar --offline
+COPY --chown=gradle:gradle . .
+RUN --mount=type=cache,uid=1000,gid=1000,target=/home/gradle/.gradle/caches gradle --no-daemon shadowJar
 
 FROM flink:2.1.3-java21
 
@@ -26,3 +18,4 @@ RUN mkdir -p /opt/flink/lib/iceberg && cd /opt/flink/lib/iceberg && \
     curl -LO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-runtime/${HADOOP_VERSION}/hadoop-client-runtime-${HADOOP_VERSION}.jar
 
 COPY --from=build --chown=flink:flink /home/gradle/project/app/build/libs/app-all.jar /opt/flink/usrlib/
+COPY --from=build --chown=flink:flink /home/gradle/project/iceberg-avro-logical-types/build/libs/iceberg-avro-logical-types-${ICEBERG_VERSION}-all.jar /opt/flink/lib/iceberg/

@@ -18,9 +18,20 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.iceberg.avro.IcebergLogicalTypes;
 import org.apache.kafka.common.header.Headers;
 
 public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
+  static {
+    // https://github.com/confluentinc/schema-registry/pull/4454
+    try {
+      Class.forName("io.confluent.kafka.schemaregistry.avro.AvroSchemaUtils");
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
+    }
+    IcebergLogicalTypes.register();
+  }
+
   private Map<Schema, Schema> schemas = new WeakHashMap<>();
 
   public KafkaAvroDeserializer(Map<String, ?> props) {
