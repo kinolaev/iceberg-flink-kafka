@@ -1,13 +1,15 @@
 package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka;
 
 import com.google.common.base.Splitter;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -45,8 +47,9 @@ public class KafkaDynamicRecordGenerator
   private String defaultCommitBranch;
   private String defaultPartitionBy;
   private KafkaAvroDeserializer deserializer;
-  private Map<org.apache.avro.Schema, AvroGenericRecordToRowDataMapper> mappers;
-  private Map<org.apache.avro.Schema, org.apache.iceberg.Schema> schemas;
+  private LoadingCache<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>>
+      schemaCache;
+  private LoadingCache<org.apache.avro.Schema, AvroGenericRecordToRowDataMapper> mapperCache;
 
   public KafkaDynamicRecordGenerator(Map<String, String> props) {
     this.props = props;
@@ -60,8 +63,8 @@ public class KafkaDynamicRecordGenerator
         new KafkaAvroDeserializer(
             PropertyUtil.filterProperties(
                 props, key -> key.startsWith(SCHEMA_REGISTRY_PROP_PREFIX)));
-    mappers = new WeakHashMap<>();
-    schemas = new WeakHashMap<>();
+    schemaCache = CacheBuilder.newBuilder().weakKeys().build(new SchemasCacheLoader());
+    mapperCache = CacheBuilder.newBuilder().weakKeys().build(new MapperCacheLoader());
   }
 
   @Override
@@ -70,24 +73,12 @@ public class KafkaDynamicRecordGenerator
     String tableName = record.topic().substring(record.topic().indexOf('.') + 1);
     TableIdentifier tableId = TableIdentifier.parse(tableName);
 
-    final Set<String> identifierFieldNames =
-        deserializer
-            .deserialize(record.topic(), true, record.headers(), record.key())
-            .getSchema()
-            .getFields()
-            .stream()
-            .map(org.apache.avro.Schema.Field::name)
-            .collect(Collectors.toSet());
-
+    GenericRecord key =
+        deserializer.deserialize(record.topic(), true, record.headers(), record.key());
     GenericRecord value =
         deserializer.deserialize(record.topic(), false, record.headers(), record.value());
-    Schema schema =
-        schemas.computeIfAbsent(
-            value.getSchema(), (avroSchema) -> convertSchema(avroSchema, identifierFieldNames));
-    RowData rowData =
-        mappers
-            .computeIfAbsent(value.getSchema(), AvroGenericRecordToRowDataMapper::forAvroSchema)
-            .map(value);
+    Schema schema = schemaCache.get(value.getSchema()).get(key.getSchema());
+    RowData rowData = mapperCache.get(value.getSchema()).map(value);
 
     String partitionBy =
         props.getOrDefault(
@@ -105,27 +96,58 @@ public class KafkaDynamicRecordGenerator
     dynamicRecord.setUpsertMode(true);
     dynamicRecord.setEqualityFields(
         Stream.concat(
-                identifierFieldNames.stream(),
+                key.getSchema().getFields().stream().map(org.apache.avro.Schema.Field::name),
                 spec.fields().stream().map(PartitionField::sourceId).map(schema::findColumnName))
             .collect(Collectors.toSet()));
     out.collect(dynamicRecord);
   }
 
+  private static class SchemasCacheLoader
+      extends CacheLoader<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>> {
+    @Override
+    public LoadingCache<org.apache.avro.Schema, Schema> load(org.apache.avro.Schema valueSchema)
+        throws Exception {
+      return CacheBuilder.newBuilder().weakKeys().build(new SchemaCacheLoader(valueSchema));
+    }
+  }
+
+  private static class SchemaCacheLoader extends CacheLoader<org.apache.avro.Schema, Schema> {
+    private org.apache.avro.Schema valueSchema;
+
+    SchemaCacheLoader(org.apache.avro.Schema valueSchema) {
+      this.valueSchema = valueSchema;
+    }
+
+    @Override
+    public Schema load(org.apache.avro.Schema keySchema) throws Exception {
+      return convertSchema(valueSchema, keySchema);
+    }
+  }
+
+  private static class MapperCacheLoader
+      extends CacheLoader<org.apache.avro.Schema, AvroGenericRecordToRowDataMapper> {
+    @Override
+    public AvroGenericRecordToRowDataMapper load(org.apache.avro.Schema avroSchema)
+        throws Exception {
+      return AvroGenericRecordToRowDataMapper.forAvroSchema(avroSchema);
+    }
+  }
+
   private static Schema convertSchema(
-      org.apache.avro.Schema schema, Set<String> identifierFieldNames) {
-    final Set<Integer> identifierFieldIds = new HashSet<>(identifierFieldNames.size());
-    final List<Types.NestedField> fields = new ArrayList<>(schema.getFields().size());
-    AvroSchemaUtil.convert(schema)
+      org.apache.avro.Schema valueSchema, org.apache.avro.Schema keySchema) {
+    final Set<Integer> identifierFieldIds = new HashSet<>(keySchema.getFields().size());
+    final List<Types.NestedField> fields = new ArrayList<>(valueSchema.getFields().size());
+    AvroSchemaUtil.convert(valueSchema)
         .asNestedType()
         .asStructType()
         .fields()
         .forEach(
             field -> {
-              if (identifierFieldNames.contains(field.name())) {
+              if (keySchema.getField(field.name()) == null) {
+                fields.add(field.asOptional());
+              } else {
                 identifierFieldIds.add(field.fieldId());
                 fields.add(field);
-              } else {
-                fields.add(field.asOptional());
               }
             });
     return new Schema(fields, identifierFieldIds);

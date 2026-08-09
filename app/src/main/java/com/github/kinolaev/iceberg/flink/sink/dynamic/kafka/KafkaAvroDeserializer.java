@@ -8,12 +8,16 @@ import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium.
 import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium.time.MicroTimestamp;
 import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium.time.NanoTime;
 import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium.time.ZonedTimestamp;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import io.confluent.kafka.serializers.AbstractKafkaAvroDeserializer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.WeakHashMap;
+import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
@@ -32,17 +36,18 @@ public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
     IcebergLogicalTypes.register();
   }
 
-  private Map<Schema, Schema> schemas = new WeakHashMap<>();
+  private LoadingCache<Schema, Optional<Schema>> schemaCache =
+      CacheBuilder.newBuilder().weakKeys().build(new SchemaCacheLoader());
 
   public KafkaAvroDeserializer(Map<String, ?> props) {
     super();
     configure(deserializerConfig(props), null);
   }
 
-  public GenericRecord deserialize(String topic, boolean isKey, Headers headers, byte[] payload) {
+  public GenericRecord deserialize(String topic, boolean isKey, Headers headers, byte[] payload)
+      throws ExecutionException {
     GenericContainer value = (GenericContainer) deserialize(topic, isKey, headers, payload, null);
-    Schema schema =
-        schemas.computeIfAbsent(value.getSchema(), KafkaAvroDeserializer::convertSchema);
+    Schema schema = schemaCache.get(value.getSchema()).orElse(value.getSchema());
     return (GenericRecord) convertValue(value.getSchema(), value, schema);
   }
 
@@ -66,6 +71,14 @@ public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
           "io.debezium.time.MicroTimestamp", MicroTimestamp.INSTANCE,
           "io.debezium.time.NanoTimestamp", AddLogicalType.TIMESTAMP_NANOS,
           "io.debezium.time.ZonedTimestamp", ZonedTimestamp.MICROS);
+
+  private static class SchemaCacheLoader extends CacheLoader<Schema, Optional<Schema>> {
+    @Override
+    public Optional<Schema> load(Schema schema) throws Exception {
+      Schema converted = convertSchema(schema);
+      return converted == schema ? Optional.empty() : Optional.of(converted);
+    }
+  }
 
   public static Schema convertSchema(Schema schema) {
     String connectName = schema.getProp(CONNECT_NAME_PROP);
