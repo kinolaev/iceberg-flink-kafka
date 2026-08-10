@@ -61,7 +61,7 @@ public class KafkaDynamicRecordGenerator
 
   private RouteConfig routeConfig;
   private String defaultCommitBranch;
-  private String defaultPartitionBy;
+  private List<String> defaultPartitionBy;
   private SchemaConfig schemaConfig;
   private KafkaAvroDeserializer deserializer;
   private LoadingCache<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>>
@@ -77,7 +77,10 @@ public class KafkaDynamicRecordGenerator
     routeConfig = new RouteConfig(props);
     defaultCommitBranch =
         props.getOrDefault(TABLES_DEFAULT_COMMIT_BRANCH_PROP, SnapshotRef.MAIN_BRANCH);
-    defaultPartitionBy = props.get(TABLES_DEFAULT_PARTITION_BY_PROP);
+    defaultPartitionBy =
+        Optional.ofNullable(props.get(TABLES_DEFAULT_PARTITION_BY_PROP))
+            .map(KafkaDynamicRecordGenerator::parsePartitionBy)
+            .orElse(List.of());
     schemaConfig = new SchemaConfig(props);
     deserializer =
         new KafkaAvroDeserializer(
@@ -102,16 +105,12 @@ public class KafkaDynamicRecordGenerator
     Schema schema = schemaCache.get(value.getSchema()).get(key.getSchema());
     RowData rowData = mapperCache.get(value.getSchema()).map(value);
 
-    String partitionBy =
-        props.getOrDefault(TABLE_PARTITION_BY_PROP.formatted(tableName), defaultPartitionBy);
-    PartitionSpec spec =
-        createPartitionSpec(
-            schema,
-            partitionBy == null
-                ? List.of()
-                : Arrays.stream(partitionBy.split(COMMA_NO_PARENS_REGEX))
-                    .map(String::trim)
-                    .collect(Collectors.toList()));
+    List<String> partitionBy =
+        Optional.ofNullable(props.get(TABLE_PARTITION_BY_PROP.formatted(tableName)))
+            .map(KafkaDynamicRecordGenerator::parsePartitionBy)
+            .orElse(defaultPartitionBy);
+    PartitionSpec spec = createPartitionSpec(schema, partitionBy);
+
     DynamicRecord dynamicRecord =
         new DynamicRecord(TableIdentifier.parse(tableName), branch, schema, rowData, spec);
     dynamicRecord.setUpsertMode(true);
@@ -256,6 +255,10 @@ public class KafkaDynamicRecordGenerator
       case UPPER -> field.name().toUpperCase();
       case LOWER -> field.name().toLowerCase();
     };
+  }
+
+  private static List<String> parsePartitionBy(String partitionBy) {
+    return Arrays.stream(partitionBy.split(COMMA_NO_PARENS_REGEX)).map(String::trim).toList();
   }
 
   // https://github.com/apache/iceberg/blob/apache-iceberg-1.11.0/kafka-connect/kafka-connect/src/main/java/org/apache/iceberg/connect/data/SchemaUtils.java#L153-L210
