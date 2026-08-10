@@ -32,10 +32,17 @@ import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.Pair;
 import org.apache.iceberg.util.PropertyUtil;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.header.Headers;
 
 public class KafkaDynamicRecordGenerator
     implements DynamicRecordGenerator<ConsumerRecord<byte[], byte[]>> {
   private static final String SCHEMA_REGISTRY_PREFIX = "schema.registry.";
+
+  private static final String TABLES_ROUTE_FIELD = "iceberg.tables.route-field";
+  private static final String TABLES_ROUTE_REGEXP_PROP = "iceberg.tables.route-regexp";
+  private static final String TABLES_ROUTE_REGEXP_REPLACE_PROP =
+      "iceberg.tables.route-regexp-replace";
+  private static final String TABLES_ROUTE_FORCE_CASE_PROP = "iceberg.tables.route-force-case";
   private static final String TABLES_DEFAULT_COMMIT_BRANCH_PROP =
       "iceberg.tables.default-commit-branch";
   private static final String TABLES_DEFAULT_PARTITION_BY_PROP =
@@ -43,6 +50,7 @@ public class KafkaDynamicRecordGenerator
   private static final String TABLES_SCHEMA_FORCE_OPTIONAL_PROP =
       "iceberg.tables.schema-force-optional";
   private static final String TABLES_SCHEMA_FORCE_CASE_PROP = "iceberg.tables.schema-force-case";
+
   private static final String TABLE_COMMIT_BRANCH_PROP = "iceberg.table.%s.commit-branch";
   private static final String TABLE_PARTITION_BY_PROP = "iceberg.table.%s.partition-by";
 
@@ -51,6 +59,7 @@ public class KafkaDynamicRecordGenerator
 
   private final Map<String, String> props;
 
+  private RouteConfig routeConfig;
   private String defaultCommitBranch;
   private String defaultPartitionBy;
   private SchemaConfig schemaConfig;
@@ -65,6 +74,7 @@ public class KafkaDynamicRecordGenerator
 
   @Override
   public void open(OpenContext openContext) {
+    routeConfig = new RouteConfig(props);
     defaultCommitBranch =
         props.getOrDefault(TABLES_DEFAULT_COMMIT_BRANCH_PROP, SnapshotRef.MAIN_BRANCH);
     defaultPartitionBy = props.get(TABLES_DEFAULT_PARTITION_BY_PROP);
@@ -79,16 +89,16 @@ public class KafkaDynamicRecordGenerator
   @Override
   public void generate(ConsumerRecord<byte[], byte[]> record, Collector<DynamicRecord> out)
       throws Exception {
-    String tableName = record.topic().substring(record.topic().indexOf('.') + 1);
-    TableIdentifier tableId = TableIdentifier.parse(tableName);
-
-    String branch =
-        props.getOrDefault(TABLE_COMMIT_BRANCH_PROP.formatted(tableName), defaultCommitBranch);
-
     GenericRecord key =
         deserializer.deserialize(record.topic(), true, record.headers(), record.key());
     GenericRecord value =
         deserializer.deserialize(record.topic(), false, record.headers(), record.value());
+
+    String tableName = getTableName(routeConfig, record.topic(), record.headers(), key, value);
+
+    String branch =
+        props.getOrDefault(TABLE_COMMIT_BRANCH_PROP.formatted(tableName), defaultCommitBranch);
+
     Schema schema = schemaCache.get(value.getSchema()).get(key.getSchema());
     RowData rowData = mapperCache.get(value.getSchema()).map(value);
 
@@ -102,7 +112,8 @@ public class KafkaDynamicRecordGenerator
                 : Arrays.stream(partitionBy.split(COMMA_NO_PARENS_REGEX))
                     .map(String::trim)
                     .collect(Collectors.toList()));
-    DynamicRecord dynamicRecord = new DynamicRecord(tableId, branch, schema, rowData, spec);
+    DynamicRecord dynamicRecord =
+        new DynamicRecord(TableIdentifier.parse(tableName), branch, schema, rowData, spec);
     dynamicRecord.setUpsertMode(true);
     dynamicRecord.setEqualityFields(
         Stream.concat(
@@ -154,6 +165,46 @@ public class KafkaDynamicRecordGenerator
   static enum ForceCase {
     UPPER,
     LOWER;
+  }
+
+  static record RouteConfig(
+      String field, String regexp, String regexpReplace, ForceCase forceCase) {
+    RouteConfig(Map<String, String> props) {
+      this(
+          props.getOrDefault(TABLES_ROUTE_FIELD, "topic"),
+          props.get(TABLES_ROUTE_REGEXP_PROP),
+          props.getOrDefault(TABLES_ROUTE_REGEXP_REPLACE_PROP, ""),
+          Optional.ofNullable(props.get(TABLES_ROUTE_FORCE_CASE_PROP))
+              .map(String::toUpperCase)
+              .map(ForceCase::valueOf)
+              .orElse(null));
+    }
+  }
+
+  static String getTableName(
+      RouteConfig config, String topic, Headers headers, GenericRecord key, GenericRecord value) {
+    String[] path = config.field().split("\\.", 2);
+    String tableName;
+    try {
+      tableName =
+          switch (path[0]) {
+            case "topic" -> topic;
+            case "headers" -> new String(headers.lastHeader(path[1]).value());
+            case "key" -> (String) key.get(path[1]);
+            case "value" -> (String) value.get(path[1]);
+            default -> throw new IllegalArgumentException("Unexpected record key");
+          };
+    } catch (Exception cause) {
+      throw new IllegalArgumentException(TABLES_ROUTE_FIELD + "=" + config.field(), cause);
+    }
+    if (config.regexp() != null) {
+      tableName = tableName.replaceAll(config.regexp(), config.regexpReplace());
+    }
+    return switch (config.forceCase()) {
+      case null -> tableName;
+      case UPPER -> tableName.toUpperCase();
+      case LOWER -> tableName.toLowerCase();
+    };
   }
 
   static record SchemaConfig(boolean forceOptional, ForceCase forceCase) {
