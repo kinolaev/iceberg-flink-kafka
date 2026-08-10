@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,11 +35,17 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 public class KafkaDynamicRecordGenerator
     implements DynamicRecordGenerator<ConsumerRecord<byte[], byte[]>> {
-  private static final String SCHEMA_REGISTRY_PROP_PREFIX = "schema.registry.";
-  private static final String TABLE_PROP_PREFIX = "iceberg.table.";
-  private static final String TABLES_DEFAULT_COMMIT_BRANCH = "iceberg.tables.default-commit-branch";
-  private static final String TABLES_DEFAULT_PARTITION_BY = "iceberg.tables.default-partition-by";
-  private static final String TABLE_PARTITION_BY_PROP_SUFFIX = ".partition-by";
+  private static final String SCHEMA_REGISTRY_PREFIX = "schema.registry.";
+  private static final String TABLES_DEFAULT_COMMIT_BRANCH_PROP =
+      "iceberg.tables.default-commit-branch";
+  private static final String TABLES_DEFAULT_PARTITION_BY_PROP =
+      "iceberg.tables.default-partition-by";
+  private static final String TABLES_SCHEMA_FORCE_OPTIONAL_PROP =
+      "iceberg.tables.schema-force-optional";
+  private static final String TABLES_SCHEMA_FORCE_CASE_PROP = "iceberg.tables.schema-force-case";
+  private static final String TABLE_COMMIT_BRANCH_PROP = "iceberg.table.%s.commit-branch";
+  private static final String TABLE_PARTITION_BY_PROP = "iceberg.table.%s.partition-by";
+
   private static final String COMMA_NO_PARENS_REGEX = ",(?![^()]*+\\))";
   private static final Pattern TRANSFORM_REGEX = Pattern.compile("(\\w+)\\((.+)\\)");
 
@@ -46,6 +53,7 @@ public class KafkaDynamicRecordGenerator
 
   private String defaultCommitBranch;
   private String defaultPartitionBy;
+  private SchemaConfig schemaConfig;
   private KafkaAvroDeserializer deserializer;
   private LoadingCache<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>>
       schemaCache;
@@ -57,13 +65,14 @@ public class KafkaDynamicRecordGenerator
 
   @Override
   public void open(OpenContext openContext) {
-    defaultCommitBranch = props.getOrDefault(TABLES_DEFAULT_COMMIT_BRANCH, SnapshotRef.MAIN_BRANCH);
-    defaultPartitionBy = props.get(TABLES_DEFAULT_PARTITION_BY);
+    defaultCommitBranch =
+        props.getOrDefault(TABLES_DEFAULT_COMMIT_BRANCH_PROP, SnapshotRef.MAIN_BRANCH);
+    defaultPartitionBy = props.get(TABLES_DEFAULT_PARTITION_BY_PROP);
+    schemaConfig = new SchemaConfig(props);
     deserializer =
         new KafkaAvroDeserializer(
-            PropertyUtil.filterProperties(
-                props, key -> key.startsWith(SCHEMA_REGISTRY_PROP_PREFIX)));
-    schemaCache = CacheBuilder.newBuilder().weakKeys().build(new SchemasCacheLoader());
+            PropertyUtil.filterProperties(props, key -> key.startsWith(SCHEMA_REGISTRY_PREFIX)));
+    schemaCache = CacheBuilder.newBuilder().weakKeys().build(new SchemasCacheLoader(schemaConfig));
     mapperCache = CacheBuilder.newBuilder().weakKeys().build(new MapperCacheLoader());
   }
 
@@ -73,6 +82,9 @@ public class KafkaDynamicRecordGenerator
     String tableName = record.topic().substring(record.topic().indexOf('.') + 1);
     TableIdentifier tableId = TableIdentifier.parse(tableName);
 
+    String branch =
+        props.getOrDefault(TABLE_COMMIT_BRANCH_PROP.formatted(tableName), defaultCommitBranch);
+
     GenericRecord key =
         deserializer.deserialize(record.topic(), true, record.headers(), record.key());
     GenericRecord value =
@@ -81,8 +93,7 @@ public class KafkaDynamicRecordGenerator
     RowData rowData = mapperCache.get(value.getSchema()).map(value);
 
     String partitionBy =
-        props.getOrDefault(
-            TABLE_PROP_PREFIX + tableName + TABLE_PARTITION_BY_PROP_SUFFIX, defaultPartitionBy);
+        props.getOrDefault(TABLE_PARTITION_BY_PROP.formatted(tableName), defaultPartitionBy);
     PartitionSpec spec =
         createPartitionSpec(
             schema,
@@ -91,12 +102,11 @@ public class KafkaDynamicRecordGenerator
                 : Arrays.stream(partitionBy.split(COMMA_NO_PARENS_REGEX))
                     .map(String::trim)
                     .collect(Collectors.toList()));
-    DynamicRecord dynamicRecord =
-        new DynamicRecord(tableId, defaultCommitBranch, schema, rowData, spec);
+    DynamicRecord dynamicRecord = new DynamicRecord(tableId, branch, schema, rowData, spec);
     dynamicRecord.setUpsertMode(true);
     dynamicRecord.setEqualityFields(
         Stream.concat(
-                key.getSchema().getFields().stream().map(org.apache.avro.Schema.Field::name),
+                key.getSchema().getFields().stream().map(this::convertAvroFieldName),
                 spec.fields().stream().map(PartitionField::sourceId).map(schema::findColumnName))
             .collect(Collectors.toSet()));
     out.collect(dynamicRecord);
@@ -104,23 +114,31 @@ public class KafkaDynamicRecordGenerator
 
   private static class SchemasCacheLoader
       extends CacheLoader<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>> {
+    private SchemaConfig config;
+
+    SchemasCacheLoader(SchemaConfig config) {
+      this.config = config;
+    }
+
     @Override
     public LoadingCache<org.apache.avro.Schema, Schema> load(org.apache.avro.Schema valueSchema)
         throws Exception {
-      return CacheBuilder.newBuilder().weakKeys().build(new SchemaCacheLoader(valueSchema));
+      return CacheBuilder.newBuilder().weakKeys().build(new SchemaCacheLoader(config, valueSchema));
     }
   }
 
   private static class SchemaCacheLoader extends CacheLoader<org.apache.avro.Schema, Schema> {
+    private SchemaConfig config;
     private org.apache.avro.Schema valueSchema;
 
-    SchemaCacheLoader(org.apache.avro.Schema valueSchema) {
+    SchemaCacheLoader(SchemaConfig config, org.apache.avro.Schema valueSchema) {
+      this.config = config;
       this.valueSchema = valueSchema;
     }
 
     @Override
     public Schema load(org.apache.avro.Schema keySchema) throws Exception {
-      return convertSchema(valueSchema, keySchema);
+      return convertSchema(config, valueSchema, keySchema);
     }
   }
 
@@ -133,8 +151,24 @@ public class KafkaDynamicRecordGenerator
     }
   }
 
-  private static Schema convertSchema(
-      org.apache.avro.Schema valueSchema, org.apache.avro.Schema keySchema) {
+  static enum ForceCase {
+    UPPER,
+    LOWER;
+  }
+
+  static record SchemaConfig(boolean forceOptional, ForceCase forceCase) {
+    SchemaConfig(Map<String, String> props) {
+      this(
+          Boolean.parseBoolean(props.getOrDefault(TABLES_SCHEMA_FORCE_OPTIONAL_PROP, "false")),
+          Optional.ofNullable(props.get(TABLES_SCHEMA_FORCE_CASE_PROP))
+              .map(String::toUpperCase)
+              .map(ForceCase::valueOf)
+              .orElse(null));
+    }
+  }
+
+  static Schema convertSchema(
+      SchemaConfig config, org.apache.avro.Schema valueSchema, org.apache.avro.Schema keySchema) {
     final Set<Integer> identifierFieldIds = new HashSet<>(keySchema.getFields().size());
     final List<Types.NestedField> fields = new ArrayList<>(valueSchema.getFields().size());
     AvroSchemaUtil.convert(valueSchema)
@@ -144,13 +178,33 @@ public class KafkaDynamicRecordGenerator
         .forEach(
             field -> {
               if (keySchema.getField(field.name()) == null) {
-                fields.add(field.asOptional());
+                fields.add(convertField(config, false, field));
               } else {
                 identifierFieldIds.add(field.fieldId());
-                fields.add(field);
+                fields.add(convertField(config, true, field));
               }
             });
     return new Schema(fields, identifierFieldIds);
+  }
+
+  private static Types.NestedField convertField(
+      SchemaConfig config, boolean isRequired, Types.NestedField field) {
+    Types.NestedField newField = !isRequired && config.forceOptional() ? field.asOptional() : field;
+    return switch (config.forceCase()) {
+      case null -> newField;
+      case UPPER ->
+          Types.NestedField.from(newField).withName(newField.name().toUpperCase()).build();
+      case LOWER ->
+          Types.NestedField.from(newField).withName(newField.name().toLowerCase()).build();
+    };
+  }
+
+  private String convertAvroFieldName(org.apache.avro.Schema.Field field) {
+    return switch (schemaConfig.forceCase()) {
+      case null -> field.name();
+      case UPPER -> field.name().toUpperCase();
+      case LOWER -> field.name().toLowerCase();
+    };
   }
 
   // https://github.com/apache/iceberg/blob/apache-iceberg-1.11.0/kafka-connect/kafka-connect/src/main/java/org/apache/iceberg/connect/data/SchemaUtils.java#L153-L210
