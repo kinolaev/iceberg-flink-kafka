@@ -1,4 +1,4 @@
-create table logicaltypes(
+create table "logicalTypes"(
   id uuid primary key,
   dec numeric(8, 4),
   varscaledec numeric,
@@ -11,7 +11,7 @@ create table logicaltypes(
   microtstz timestamp(6) with time zone
 );
 
-insert into logicaltypes(id, dec, varscaledec, date, time, microtime, ts, microts, tstz, microtstz)
+insert into "logicalTypes"(id, dec, varscaledec, date, time, microtime, ts, microts, tstz, microtstz)
   values(uuidv7(), 1.2, 3.4, '2026-08-06', '16:30:00.123', '16:30:00.123456',
     '2026-08-06 16:30:00.123'   , '2026-08-06 16:30:00.123456',
     '2026-08-06 16:30:00.123+02', '2026-08-06 16:30:00.123456+02');
