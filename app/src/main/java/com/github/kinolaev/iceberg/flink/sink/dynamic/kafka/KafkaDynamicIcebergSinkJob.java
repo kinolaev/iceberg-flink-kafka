@@ -1,5 +1,7 @@
 package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -8,6 +10,7 @@ import java.util.stream.Collectors;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.connector.kafka.source.enumerator.subscriber.KafkaSubscriber;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.ParameterTool;
@@ -16,24 +19,24 @@ import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.sink.dynamic.DynamicIcebergSink;
 import org.apache.iceberg.util.PropertyUtil;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
+import org.apache.kafka.common.TopicPartition;
 
 public class KafkaDynamicIcebergSinkJob {
   private static final String NAME_PROP = "name";
-  private static final String NAME_DEFAULT = KafkaDynamicIcebergSinkJob.class.getCanonicalName();
+  private static final String NAME_DEFAULT = "kafka-dynamic-iceberg-sink";
   private static final String CHECKPOINT_INTERVAL_PROP = "checkpoint.interval";
   private static final int CHECKPOINT_INTERVAL_DEFAULT = 300_000;
 
-  private static final String KAFKA_PROP_PREFIX = "kafka.";
-  private static final String HADOOP_PROP_PREFIX = "hadoop.";
-  private static final String CATALOG_PROP_PREFIX = "iceberg.catalog.";
-  private static final String CATALOG_NAME_PROP = "iceberg.catalog";
-  private static final String CATALOG_NAME_DEFAULT = "iceberg";
+  private static final String KAFKA_PREFIX = "kafka.";
+  private static final String KAFKA_TOPICS_PROP = "kafka.topics";
+  private static final String KAFKA_OFFSETS_PROP = "kafka.offsets";
+  private static final String KAFKA_OFFSETS_DEFAULT = "committed,earliest";
 
-  private static final String TOPICS_PROP = "kafka.topics";
-  private static final String TOPIC_PATTERN_PROP = "kafka.topic-pattern";
-  private static final String PARTITIONS_PROP = "kafka.partitions";
-  private static final Set<String> SUBSCRIBER_PROPS =
-      Set.of(TOPICS_PROP, TOPIC_PATTERN_PROP, PARTITIONS_PROP);
+  private static final String ICEBERG_CATALOG_PROP = "iceberg.catalog";
+  private static final String ICEBERG_CATALOG_DEFAULT = "iceberg";
+  private static final String ICEBERG_CATALOG_PREFIX = "iceberg.catalog.";
+  private static final String ICEBERG_HADOOP_PREFIX = "iceberg.hadoop.";
 
   public static void main(String[] args) throws Exception {
     ParameterTool parameters = ParameterTool.fromPropertiesFile(args[0]);
@@ -45,39 +48,104 @@ public class KafkaDynamicIcebergSinkJob {
     env.enableCheckpointing(
         parameters.getInt(CHECKPOINT_INTERVAL_PROP, CHECKPOINT_INTERVAL_DEFAULT));
 
-    final Properties kafkaProps =
-        parameters.toMap().entrySet().stream()
-            .filter(
-                entry ->
-                    entry.getKey().startsWith(KAFKA_PROP_PREFIX)
-                        && !SUBSCRIBER_PROPS.contains(entry.getKey()))
-            .collect(
-                Collectors.toMap(
-                    entry -> entry.getKey().substring(KAFKA_PROP_PREFIX.length()),
-                    Map.Entry::getValue,
-                    (prev, next) -> next,
-                    Properties::new));
     KafkaSource<ConsumerRecord<byte[], byte[]>> source =
         KafkaSource.<ConsumerRecord<byte[], byte[]>>builder()
-            .setTopicPattern(Pattern.compile(parameters.get(TOPIC_PATTERN_PROP)))
-            .setGroupId(parameters.get(NAME_PROP, NAME_DEFAULT))
-            .setStartingOffsets(OffsetsInitializer.earliest())
+            .setGroupId("flink-" + parameters.get(NAME_PROP, NAME_DEFAULT))
+            .setKafkaSubscriber(parseSubscriber(parameters.get(KAFKA_TOPICS_PROP)))
+            .setStartingOffsets(
+                parseOffsets(parameters.get(KAFKA_OFFSETS_PROP, KAFKA_OFFSETS_DEFAULT)))
+            .setProperties(parseKafkaProperties(parameters.toMap()))
             .setDeserializer(new KafkaConsumerRecordDeserializationSchema())
-            .setProperties(kafkaProps)
             .build();
     DataStream<ConsumerRecord<byte[], byte[]>> sourceStream =
         env.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka");
 
-    String catalogName = parameters.get(CATALOG_NAME_PROP, CATALOG_NAME_DEFAULT);
+    String catalogName = parameters.get(ICEBERG_CATALOG_PROP, ICEBERG_CATALOG_DEFAULT);
     Configuration hadoopConf = new Configuration();
-    PropertyUtil.propertiesWithPrefix(parameters.toMap(), HADOOP_PROP_PREFIX)
+    PropertyUtil.propertiesWithPrefix(parameters.toMap(), ICEBERG_HADOOP_PREFIX)
         .forEach(hadoopConf::set);
     Map<String, String> catalogProps =
-        PropertyUtil.propertiesWithPrefix(parameters.toMap(), CATALOG_PROP_PREFIX);
+        PropertyUtil.propertiesWithPrefix(parameters.toMap(), ICEBERG_CATALOG_PREFIX);
+
     DynamicIcebergSink.forInput(sourceStream)
         .generator(new KafkaDynamicRecordGenerator(parameters.toMap()))
         .catalogLoader(CatalogLoader.rest(catalogName, hadoopConf, catalogProps))
         .append();
     env.execute(parameters.get(NAME_PROP, NAME_DEFAULT));
+  }
+
+  static KafkaSubscriber parseSubscriber(String topics) {
+    return switch (topics) {
+      case String s when s.contains("*") || s.contains("+") || s.contains("?") ->
+          KafkaSubscriber.getTopicPatternSubscriber(Pattern.compile(s));
+      case String s when s.contains(":") ->
+          KafkaSubscriber.getPartitionSetSubscriber(parsePartitions(s));
+      default -> KafkaSubscriber.getTopicListSubscriber(List.of(topics.split(",")));
+    };
+  }
+
+  private static Set<TopicPartition> parsePartitions(String partitions) {
+    return Arrays.stream(partitions.split(","))
+        .map(KafkaDynamicIcebergSinkJob::parsePartition)
+        .collect(Collectors.toSet());
+  }
+
+  private static TopicPartition parsePartition(String partition) {
+    String[] p = partition.split(":", 2);
+    try {
+      return new TopicPartition(p[0], Integer.parseInt(p[1]));
+    } catch (Exception cause) {
+      throw new IllegalArgumentException("Invalid partition: " + partition, cause);
+    }
+  }
+
+  static OffsetsInitializer parseOffsets(String offsets) {
+    return switch (offsets) {
+      case "earliest" -> OffsetsInitializer.earliest();
+      case "committed" -> OffsetsInitializer.committedOffsets(OffsetResetStrategy.NONE);
+      case "committed,earliest" ->
+          OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST);
+      case "committed,latest" -> OffsetsInitializer.committedOffsets(OffsetResetStrategy.LATEST);
+      case "latest" -> OffsetsInitializer.latest();
+      case String s when s.endsWith(",earliest") ->
+          OffsetsInitializer.offsets(
+              parsePartitionOffsets(s.substring(0, s.length() - 9)), OffsetResetStrategy.EARLIEST);
+      case String s when s.endsWith(",latest") ->
+          OffsetsInitializer.offsets(
+              parsePartitionOffsets(s.substring(0, s.length() - 7)), OffsetResetStrategy.LATEST);
+      case String s when s.contains(":") ->
+          OffsetsInitializer.offsets(parsePartitionOffsets(s), OffsetResetStrategy.NONE);
+      default -> OffsetsInitializer.timestamp(Long.parseLong(offsets));
+    };
+  }
+
+  private static Map<TopicPartition, Long> parsePartitionOffsets(String partitionOffsets) {
+    return Arrays.stream(partitionOffsets.split(","))
+        .map(KafkaDynamicIcebergSinkJob::parsePartitionOffset)
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+  }
+
+  private static Map.Entry<TopicPartition, Long> parsePartitionOffset(String partitionOffset) {
+    String[] p = partitionOffset.split(":", 3);
+    try {
+      return Map.entry(new TopicPartition(p[0], Integer.parseInt(p[1])), Long.valueOf(p[2]));
+    } catch (Exception cause) {
+      throw new IllegalArgumentException("Invalid partition offset: " + partitionOffset, cause);
+    }
+  }
+
+  static Properties parseKafkaProperties(Map<String, String> properties) {
+    return properties.entrySet().stream()
+        .filter(
+            entry ->
+                entry.getKey().startsWith(KAFKA_PREFIX)
+                    && !KAFKA_TOPICS_PROP.equals(entry.getKey())
+                    && !KAFKA_OFFSETS_PROP.equals(entry.getKey()))
+        .collect(
+            Collectors.toMap(
+                entry -> entry.getKey().substring(KAFKA_PREFIX.length()),
+                Map.Entry::getValue,
+                (prev, next) -> next,
+                Properties::new));
   }
 }
