@@ -19,6 +19,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.Collector;
+import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
@@ -52,6 +53,8 @@ public class KafkaDynamicRecordGenerator
   private static final String TABLES_SCHEMA_FORCE_CASE_PROP = "iceberg.tables.schema-force-case";
   private static final String TABLES_UPSERT_MODE_ENABLED_PROP =
       "iceberg.tables.upsert-mode-enabled";
+  private static final String TABLES_DISTRIBUTION_MODE_PROP = "iceberg.tables.distribution-mode";
+  private static final String TABLES_WRITE_PARALLELISM_PROP = "iceberg.tables.write-parallelism";
 
   private static final String TABLE_COMMIT_BRANCH_PROP = "iceberg.table.%s.commit-branch";
   private static final String TABLE_PARTITION_BY_PROP = "iceberg.table.%s.partition-by";
@@ -66,6 +69,8 @@ public class KafkaDynamicRecordGenerator
   private List<String> defaultPartitionBy;
   private SchemaConfig schemaConfig;
   private boolean upsertModeEnabled;
+  private DistributionMode distributionMode;
+  private int writeParallelism;
   private KafkaAvroDeserializer deserializer;
   private LoadingCache<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>>
       schemaCache;
@@ -87,6 +92,11 @@ public class KafkaDynamicRecordGenerator
     schemaConfig = new SchemaConfig(props);
     upsertModeEnabled =
         Boolean.parseBoolean(props.getOrDefault(TABLES_UPSERT_MODE_ENABLED_PROP, "false"));
+    distributionMode =
+        Optional.ofNullable(props.get(TABLES_DISTRIBUTION_MODE_PROP))
+            .map(DistributionMode::fromName)
+            .orElse(null);
+    writeParallelism = Integer.parseInt(props.getOrDefault(TABLES_WRITE_PARALLELISM_PROP, "-1"));
     deserializer =
         new KafkaAvroDeserializer(
             PropertyUtil.filterProperties(props, key -> key.startsWith(SCHEMA_REGISTRY_PREFIX)));
@@ -122,8 +132,10 @@ public class KafkaDynamicRecordGenerator
             .orElse(defaultPartitionBy);
     PartitionSpec spec = createPartitionSpec(schema, partitionBy);
 
+    TableIdentifier tableId = TableIdentifier.parse(tableName);
     DynamicRecord dynamicRecord =
-        new DynamicRecord(TableIdentifier.parse(tableName), branch, schema, rowData, spec);
+        new DynamicRecord(
+            tableId, branch, schema, rowData, spec, distributionMode, writeParallelism);
     if (upsertModeEnabled) {
       dynamicRecord.setUpsertMode(true);
       dynamicRecord.setEqualityFields(
