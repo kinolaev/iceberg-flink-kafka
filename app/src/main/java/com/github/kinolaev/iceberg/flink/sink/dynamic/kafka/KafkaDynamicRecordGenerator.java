@@ -50,6 +50,8 @@ public class KafkaDynamicRecordGenerator
   private static final String TABLES_SCHEMA_FORCE_OPTIONAL_PROP =
       "iceberg.tables.schema-force-optional";
   private static final String TABLES_SCHEMA_FORCE_CASE_PROP = "iceberg.tables.schema-force-case";
+  private static final String TABLES_UPSERT_MODE_ENABLED_PROP =
+      "iceberg.tables.upsert-mode-enabled";
 
   private static final String TABLE_COMMIT_BRANCH_PROP = "iceberg.table.%s.commit-branch";
   private static final String TABLE_PARTITION_BY_PROP = "iceberg.table.%s.partition-by";
@@ -63,6 +65,7 @@ public class KafkaDynamicRecordGenerator
   private String defaultCommitBranch;
   private List<String> defaultPartitionBy;
   private SchemaConfig schemaConfig;
+  private boolean upsertModeEnabled;
   private KafkaAvroDeserializer deserializer;
   private LoadingCache<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>>
       schemaCache;
@@ -82,6 +85,8 @@ public class KafkaDynamicRecordGenerator
             .map(KafkaDynamicRecordGenerator::parsePartitionBy)
             .orElse(List.of());
     schemaConfig = new SchemaConfig(props);
+    upsertModeEnabled =
+        Boolean.parseBoolean(props.getOrDefault(TABLES_UPSERT_MODE_ENABLED_PROP, "false"));
     deserializer =
         new KafkaAvroDeserializer(
             PropertyUtil.filterProperties(props, key -> key.startsWith(SCHEMA_REGISTRY_PREFIX)));
@@ -113,12 +118,14 @@ public class KafkaDynamicRecordGenerator
 
     DynamicRecord dynamicRecord =
         new DynamicRecord(TableIdentifier.parse(tableName), branch, schema, rowData, spec);
-    dynamicRecord.setUpsertMode(true);
-    dynamicRecord.setEqualityFields(
-        Stream.concat(
-                key.getSchema().getFields().stream().map(this::convertAvroFieldName),
-                spec.fields().stream().map(PartitionField::sourceId).map(schema::findColumnName))
-            .collect(Collectors.toSet()));
+    if (upsertModeEnabled) {
+      dynamicRecord.setUpsertMode(true);
+      dynamicRecord.setEqualityFields(
+          Stream.concat(
+                  key.getSchema().getFields().stream().map(this::convertAvroFieldName),
+                  spec.fields().stream().map(PartitionField::sourceId).map(schema::findColumnName))
+              .collect(Collectors.toSet()));
+    }
     out.collect(dynamicRecord);
   }
 
