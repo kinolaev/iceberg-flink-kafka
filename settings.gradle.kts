@@ -11,5 +11,5 @@ plugins {
 }
 
 rootProject.name = "iceberg-flink-kafka"
-include("app")
 include("iceberg-avro-logical-types")
+include("kafka-dynamic-iceberg-sink")

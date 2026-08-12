@@ -1,4 +1,4 @@
-# Iceberg Flink Kafka Dynamic Sink Job
+# Flink Kafka Dynamic Iceberg Sink Job
 
 ```bash
 docker compose up -d rustfs
@@ -8,12 +8,12 @@ docker compose exec rustfs curl \
 docker compose exec rustfs curl \
   -X PUT http://localhost:9000/iceberg/v1/buckets/warehouse \
   --aws-sigv4 aws:amz:us-east-1:s3 --user rustfs:rustfs
-./gradlew shadowJar
+./gradlew :kafka-dynamic-iceberg-sink:shadowJar
 docker compose up
 ```
 ```bash
 docker compose exec jobmanager flink run -sae \
-  /opt/flink/usrlib/app-all.jar \
+  /opt/flink/usrlib/kafka-dynamic-iceberg-sink-all.jar \
   /opt/flink/usrconf/config.properties \
   /opt/flink/usrconf/secret.properties
 ```

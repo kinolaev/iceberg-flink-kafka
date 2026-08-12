@@ -44,7 +44,7 @@ services:
       - rustfs
     build: .
     volumes:
-      - ./app/build/libs:/opt/flink/usrlib
+      - ./kafka-dynamic-iceberg-sink/build/libs:/opt/flink/usrlib
       - ./compose/flink/usrconf:/opt/flink/usrconf
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
@@ -58,7 +58,7 @@ services:
       - jobmanager
     image: iceberg-flink-kafka-jobmanager:latest
     volumes:
-      - ./app/build/libs:/opt/flink/usrlib
+      - ./kafka-dynamic-iceberg-sink/build/libs:/opt/flink/usrlib
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
     command:
