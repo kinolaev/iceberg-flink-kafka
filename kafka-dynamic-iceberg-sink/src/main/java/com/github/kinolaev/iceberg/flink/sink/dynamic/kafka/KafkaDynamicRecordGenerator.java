@@ -6,7 +6,8 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -140,9 +141,9 @@ public class KafkaDynamicRecordGenerator
       dynamicRecord.setUpsertMode(true);
       dynamicRecord.setEqualityFields(
           Stream.concat(
-                  keySchema.getFields().stream().map(this::convertAvroFieldName),
+                  schema.identifierFieldIds().stream().map(schema::findColumnName),
                   spec.fields().stream().map(PartitionField::sourceId).map(schema::findColumnName))
-              .collect(Collectors.toSet()));
+              .collect(Collectors.toCollection(LinkedHashSet::new)));
     }
     out.collect(dynamicRecord);
   }
@@ -244,21 +245,19 @@ public class KafkaDynamicRecordGenerator
 
   static Schema convertSchema(
       SchemaConfig config, org.apache.avro.Schema valueSchema, org.apache.avro.Schema keySchema) {
-    final Set<Integer> identifierFieldIds = new HashSet<>(keySchema.getFields().size());
-    final List<Types.NestedField> fields = new ArrayList<>(valueSchema.getFields().size());
-    AvroSchemaUtil.convert(valueSchema)
-        .asNestedType()
-        .asStructType()
-        .fields()
-        .forEach(
-            field -> {
-              if (keySchema.getField(field.name()) == null) {
-                fields.add(convertField(config, false, field));
-              } else {
-                identifierFieldIds.add(field.fieldId());
-                fields.add(convertField(config, true, field));
-              }
-            });
+    Map<String, Integer> idToName = new HashMap<>(keySchema.getFields().size());
+    List<Types.NestedField> fields = new ArrayList<>(valueSchema.getFields().size());
+    Types.StructType struct = AvroSchemaUtil.convert(valueSchema).asNestedType().asStructType();
+    for (Types.NestedField field : struct.fields()) {
+      boolean isKey = keySchema.getField(field.name()) != null;
+      if (isKey) idToName.put(field.name(), field.fieldId());
+      fields.add(convertField(config, isKey, field));
+    }
+    Set<Integer> identifierFieldIds = new LinkedHashSet<>(idToName.size());
+    for (org.apache.avro.Schema.Field field : keySchema.getFields()) {
+      Integer id = idToName.get(field.name());
+      if (id != null) identifierFieldIds.add(id);
+    }
     return new Schema(fields, identifierFieldIds);
   }
 
@@ -271,14 +270,6 @@ public class KafkaDynamicRecordGenerator
           Types.NestedField.from(newField).withName(newField.name().toUpperCase()).build();
       case LOWER ->
           Types.NestedField.from(newField).withName(newField.name().toLowerCase()).build();
-    };
-  }
-
-  private String convertAvroFieldName(org.apache.avro.Schema.Field field) {
-    return switch (schemaConfig.forceCase()) {
-      case null -> field.name();
-      case UPPER -> field.name().toUpperCase();
-      case LOWER -> field.name().toLowerCase();
     };
   }
 

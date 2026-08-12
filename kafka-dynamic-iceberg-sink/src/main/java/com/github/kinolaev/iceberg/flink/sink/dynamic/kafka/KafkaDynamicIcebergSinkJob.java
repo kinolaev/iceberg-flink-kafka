@@ -15,6 +15,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.ParameterTool;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.sink.dynamic.DynamicIcebergSink;
@@ -42,6 +43,8 @@ public class KafkaDynamicIcebergSinkJob {
   private static final String TABLES_SCHEMA_CASE_INSENSITIVE_PROP =
       "iceberg.tables.schema-case-insensitive";
   private static final boolean TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT = false;
+  private static final String TABLES_AUTO_CREATE_SORT_ORDER_BY_ID_COLUMNS_PROP =
+      "iceberg.tables.auto-create-sort-order-by-id-columns";
   private static final String TABLES_AUTO_CREATE_PROPS_PREFIX = "iceberg.tables.auto-create-props.";
   private static final String TABLES_WRITE_PROPS_PREFIX = "iceberg.tables.write-props.";
 
@@ -75,6 +78,8 @@ public class KafkaDynamicIcebergSinkJob {
     Map<String, String> catalogProps =
         PropertyUtil.propertiesWithPrefix(parameters.toMap(), ICEBERG_CATALOG_PREFIX);
 
+    boolean tablesAutoCreateSortOrderByIdColumns =
+        parameters.getBoolean(TABLES_AUTO_CREATE_SORT_ORDER_BY_ID_COLUMNS_PROP, false);
     Map<String, String> tablesAutoCreateProps =
         PropertyUtil.propertiesWithPrefix(parameters.toMap(), TABLES_AUTO_CREATE_PROPS_PREFIX);
     Map<String, String> tablesWriteProps =
@@ -94,9 +99,16 @@ public class KafkaDynamicIcebergSinkJob {
                   && !catalogWithNamespaces.namespaceExists(identifier.namespace())) {
                 catalogWithNamespaces.createNamespace(identifier.namespace());
               }
+              SortOrder sortOrder = SortOrder.unsorted();
+              if (tablesAutoCreateSortOrderByIdColumns) {
+                SortOrder.Builder builder = SortOrder.builderFor(schema);
+                for (int id : schema.identifierFieldIds()) builder.asc(schema.findColumnName(id));
+                sortOrder = builder.build();
+              }
               return catalog
                   .buildTable(identifier, schema)
                   .withPartitionSpec(spec)
+                  .withSortOrder(sortOrder)
                   .withProperties(tablesAutoCreateProps)
                   .create();
             })

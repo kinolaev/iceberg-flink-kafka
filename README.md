@@ -20,4 +20,5 @@ docker compose exec jobmanager flink run -sae \
 ```bash
 docker compose exec trino trino --execute 'select * from iceberg.public.logicaltypes'
 docker compose exec trino trino --execute 'select * from iceberg.public.partitioned'
+docker compose exec trino trino --execute 'select * from iceberg.public.sort_order'
 ```
