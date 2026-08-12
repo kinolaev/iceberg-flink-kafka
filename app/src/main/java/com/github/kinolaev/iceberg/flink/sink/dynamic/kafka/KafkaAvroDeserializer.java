@@ -12,15 +12,20 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import io.confluent.kafka.serializers.AbstractKafkaAvroDeserializer;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import org.apache.avro.JsonProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericFixed;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.iceberg.avro.IcebergLogicalTypes;
 import org.apache.kafka.common.header.Headers;
@@ -130,7 +135,7 @@ public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
     for (var field : schema.getFields()) {
       Schema convertedFieldSchema = convertSchema(field.schema());
       changed |= convertedFieldSchema != field.schema();
-      fields.add(new Schema.Field(field, convertedFieldSchema));
+      fields.add(convertField(field, convertedFieldSchema));
     }
     if (!changed) {
       return schema;
@@ -141,6 +146,20 @@ public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
     schema.forEachProperty(converted::addProp);
     schema.getAliases().forEach(converted::addAlias);
     return converted;
+  }
+
+  private static Schema.Field convertField(Schema.Field field, Schema newSchema) {
+    if (newSchema == field.schema() || !field.hasDefaultValue()) {
+      return new Schema.Field(field, newSchema);
+    }
+    Object oldGenericValue = GenericData.get().getDefaultValue(field);
+    Object newGenericValue = convertValue(field.schema(), oldGenericValue, newSchema);
+    Object newDefaultValue = unwrapGeneric(newGenericValue, newSchema);
+    Schema.Field newField =
+        new Schema.Field(field.name(), newSchema, field.doc(), newDefaultValue, field.order());
+    newField.putAll(field);
+    field.aliases().forEach(newField::addAlias);
+    return newField;
   }
 
   private static Schema convertUnionSchema(Schema schema) {
@@ -218,5 +237,52 @@ public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
     int branchIndex = GenericData.get().resolveUnion(oldSchema, value);
     return convertValue(
         oldSchema.getTypes().get(branchIndex), value, newSchema.getTypes().get(branchIndex));
+  }
+
+  private static Object unwrapGeneric(Object value, Schema schema) {
+    if (value == null) {
+      return JsonProperties.NULL_VALUE;
+    }
+    switch (schema.getType()) {
+      case BYTES:
+        ByteBuffer buffer = (ByteBuffer) value;
+        if (buffer.hasArray()) {
+          return new String(
+              buffer.array(),
+              buffer.arrayOffset() + buffer.position(),
+              buffer.remaining(),
+              StandardCharsets.ISO_8859_1);
+        }
+        byte[] bytes = new byte[buffer.remaining()];
+        buffer.duplicate().get(bytes);
+        return new String(bytes, StandardCharsets.ISO_8859_1);
+      case FIXED:
+        return new String(((GenericFixed) value).bytes(), StandardCharsets.ISO_8859_1);
+
+      case ARRAY:
+        List<Object> list = new ArrayList<>();
+        for (Object element : (List<?>) value) {
+          list.add(unwrapGeneric(element, schema.getElementType()));
+        }
+        return list;
+      case MAP:
+        Map<Object, Object> newMap = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+          newMap.put(entry.getKey(), unwrapGeneric(entry.getValue(), schema.getValueType()));
+        }
+        return newMap;
+      case RECORD:
+        GenericRecord record = (GenericRecord) value;
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (Schema.Field field : schema.getFields()) {
+          map.put(field.name(), unwrapGeneric(record.get(field.pos()), field.schema()));
+        }
+        return map;
+      case UNION:
+        int branchIndex = GenericData.get().resolveUnion(schema, value);
+        return unwrapGeneric(value, schema.getTypes().get(branchIndex));
+      default:
+        return value;
+    }
   }
 }

@@ -1,6 +1,6 @@
 create table partitioned(
-  id uuid primary key,
-  "createdAt" timestamp(6) with time zone not null
+  id uuid primary key default uuidv7(),
+  "createdAt" timestamp(6) with time zone not null default now()
 );
 
 insert into partitioned(id, "createdAt") values
