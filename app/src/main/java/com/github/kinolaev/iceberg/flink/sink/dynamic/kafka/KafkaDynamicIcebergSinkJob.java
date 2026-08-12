@@ -41,6 +41,8 @@ public class KafkaDynamicIcebergSinkJob {
   private static final String TABLES_SCHEMA_CASE_INSENSITIVE_PROP =
       "iceberg.tables.schema-case-insensitive";
   private static final boolean TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT = false;
+  private static final String TABLES_AUTO_CREATE_PROPS_PREFIX = "iceberg.tables.auto-create-props.";
+  private static final String TABLES_WRITE_PROPS_PREFIX = "iceberg.tables.write-props.";
 
   public static void main(String[] args) throws Exception {
     ParameterTool parameters = ParameterTool.fromPropertiesFile(args[0]);
@@ -71,12 +73,25 @@ public class KafkaDynamicIcebergSinkJob {
     Map<String, String> catalogProps =
         PropertyUtil.propertiesWithPrefix(parameters.toMap(), ICEBERG_CATALOG_PREFIX);
 
+    Map<String, String> tablesAutoCreateProps =
+        PropertyUtil.propertiesWithPrefix(parameters.toMap(), TABLES_AUTO_CREATE_PROPS_PREFIX);
+    Map<String, String> tablesWriteProps =
+        PropertyUtil.propertiesWithPrefix(parameters.toMap(), TABLES_WRITE_PROPS_PREFIX);
+
     DynamicIcebergSink.forInput(sourceStream)
         .generator(new KafkaDynamicRecordGenerator(parameters.toMap()))
         .catalogLoader(CatalogLoader.rest(catalogName, hadoopConf, catalogProps))
         .caseSensitive(
             !parameters.getBoolean(
                 TABLES_SCHEMA_CASE_INSENSITIVE_PROP, TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT))
+        .tableCreator(
+            (catalog, identifier, schema, spec) ->
+                catalog
+                    .buildTable(identifier, schema)
+                    .withPartitionSpec(spec)
+                    .withProperties(tablesAutoCreateProps)
+                    .create())
+        .setAll(tablesWriteProps)
         .append();
     env.execute(parameters.get(NAME_PROP, NAME_DEFAULT));
   }
