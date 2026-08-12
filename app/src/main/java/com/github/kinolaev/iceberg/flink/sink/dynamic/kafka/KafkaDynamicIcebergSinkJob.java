@@ -51,13 +51,14 @@ public class KafkaDynamicIcebergSinkJob {
       parameters = parameters.mergeWith(ParameterTool.fromPropertiesFile(args[1]));
     }
 
+    final String jobName = parameters.get(NAME_PROP, NAME_DEFAULT);
     final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.enableCheckpointing(
         parameters.getInt(CHECKPOINT_INTERVAL_PROP, CHECKPOINT_INTERVAL_DEFAULT));
 
     KafkaSource<ConsumerRecord<byte[], byte[]>> source =
         KafkaSource.<ConsumerRecord<byte[], byte[]>>builder()
-            .setGroupId("flink-" + parameters.get(NAME_PROP, NAME_DEFAULT))
+            .setGroupId("flink-" + jobName)
             .setKafkaSubscriber(parseSubscriber(parameters.get(KAFKA_TOPICS_PROP)))
             .setStartingOffsets(
                 parseOffsets(parameters.get(KAFKA_OFFSETS_PROP, KAFKA_OFFSETS_DEFAULT)))
@@ -80,6 +81,7 @@ public class KafkaDynamicIcebergSinkJob {
         PropertyUtil.propertiesWithPrefix(parameters.toMap(), TABLES_WRITE_PROPS_PREFIX);
 
     DynamicIcebergSink.forInput(sourceStream)
+        .uidPrefix(jobName)
         .generator(new KafkaDynamicRecordGenerator(parameters.toMap()))
         .catalogLoader(CatalogLoader.rest(catalogName, hadoopConf, catalogProps))
         .caseSensitive(
@@ -100,7 +102,7 @@ public class KafkaDynamicIcebergSinkJob {
             })
         .setAll(tablesWriteProps)
         .append();
-    env.execute(parameters.get(NAME_PROP, NAME_DEFAULT));
+    env.execute(jobName);
   }
 
   static KafkaSubscriber parseSubscriber(String topics) {
