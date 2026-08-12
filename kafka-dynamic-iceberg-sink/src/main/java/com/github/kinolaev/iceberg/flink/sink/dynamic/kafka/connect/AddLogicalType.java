@@ -1,50 +1,74 @@
 package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect;
 
-import java.util.function.Function;
-import org.apache.avro.LogicalType;
+import java.util.function.ToIntFunction;
+import java.util.function.UnaryOperator;
 import org.apache.avro.LogicalTypes;
 import org.apache.avro.Schema;
+import org.apache.iceberg.avro.AvroSchemaUtil;
 
 public class AddLogicalType implements Converter {
-  public AddLogicalType decimal(
-      Function<Schema, Integer> precision, Function<Schema, Integer> scale) {
+  public AddLogicalType decimal(ToIntFunction<Schema> precision, ToIntFunction<Schema> scale) {
     return new AddLogicalType(
-        schema -> LogicalTypes.decimal(precision.apply(schema), scale.apply(schema)));
+        schema ->
+            LogicalTypes.decimal(precision.applyAsInt(schema), scale.applyAsInt(schema))
+                .addToSchema(schema));
   }
 
   public static final AddLogicalType BIG_DECIMAL =
-      new AddLogicalType(schema -> LogicalTypes.bigDecimal());
-  public static final AddLogicalType UUID = new AddLogicalType(schema -> LogicalTypes.uuid());
-  public static final AddLogicalType DATE = new AddLogicalType(schema -> LogicalTypes.date());
+      new AddLogicalType(LogicalTypes.bigDecimal()::addToSchema);
+  public static final AddLogicalType UUID = new AddLogicalType(LogicalTypes.uuid()::addToSchema);
+  public static final AddLogicalType DATE = new AddLogicalType(LogicalTypes.date()::addToSchema);
   public static final AddLogicalType TIME_MILLIS =
-      new AddLogicalType(schema -> LogicalTypes.timeMillis());
+      new AddLogicalType(LogicalTypes.timeMillis()::addToSchema);
   public static final AddLogicalType TIME_MICROS =
-      new AddLogicalType(schema -> LogicalTypes.timeMicros());
+      new AddLogicalType(LogicalTypes.timeMicros()::addToSchema);
   public static final AddLogicalType TIMESTAMP_MILLIS =
-      new AddLogicalType(schema -> LogicalTypes.timestampMillis());
+      new AddLogicalType(
+          schema -> {
+            schema.addProp(AvroSchemaUtil.ADJUST_TO_UTC_PROP, true);
+            return LogicalTypes.timestampMillis().addToSchema(schema);
+          });
   public static final AddLogicalType TIMESTAMP_MICROS =
-      new AddLogicalType(schema -> LogicalTypes.timestampMicros());
+      new AddLogicalType(
+          schema -> {
+            schema.addProp(AvroSchemaUtil.ADJUST_TO_UTC_PROP, true);
+            return LogicalTypes.timestampMicros().addToSchema(schema);
+          });
   public static final AddLogicalType TIMESTAMP_NANOS =
-      new AddLogicalType(schema -> LogicalTypes.timestampNanos());
+      new AddLogicalType(
+          schema -> {
+            schema.addProp(AvroSchemaUtil.ADJUST_TO_UTC_PROP, true);
+            return LogicalTypes.timestampNanos().addToSchema(schema);
+          });
   public static final AddLogicalType LOCAL_TIMESTAMP_MILLIS =
-      new AddLogicalType(schema -> LogicalTypes.localTimestampMillis());
+      new AddLogicalType(
+          schema -> {
+            schema.addProp(AvroSchemaUtil.ADJUST_TO_UTC_PROP, false);
+            return LogicalTypes.timestampMillis().addToSchema(schema);
+          });
   public static final AddLogicalType LOCAL_TIMESTAMP_MICROS =
-      new AddLogicalType(schema -> LogicalTypes.localTimestampMicros());
+      new AddLogicalType(
+          schema -> {
+            schema.addProp(AvroSchemaUtil.ADJUST_TO_UTC_PROP, false);
+            return LogicalTypes.timestampMicros().addToSchema(schema);
+          });
   public static final AddLogicalType LOCAL_TIMESTAMP_NANOS =
-      new AddLogicalType(schema -> LogicalTypes.localTimestampNanos());
+      new AddLogicalType(
+          schema -> {
+            schema.addProp(AvroSchemaUtil.ADJUST_TO_UTC_PROP, false);
+            return LogicalTypes.timestampNanos().addToSchema(schema);
+          });
   public static final AddLogicalType DURATION =
-      new AddLogicalType(schema -> LogicalTypes.duration());
+      new AddLogicalType(LogicalTypes.duration()::addToSchema);
 
-  private final Function<Schema, LogicalType> logicalType;
+  private final UnaryOperator<Schema> update;
 
-  public AddLogicalType(Function<Schema, LogicalType> logicalType) {
-    this.logicalType = logicalType;
+  public AddLogicalType(UnaryOperator<Schema> update) {
+    this.update = update;
   }
 
   @Override
   public Schema convertSchema(Schema schema) {
-    Schema converted = new Schema.Parser().parse(schema.toString());
-    logicalType.apply(converted).addToSchema(converted);
-    return converted;
+    return update.apply(new Schema.Parser().parse(schema.toString()));
   }
 }

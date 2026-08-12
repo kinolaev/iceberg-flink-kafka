@@ -17,8 +17,7 @@ public class VariableScaleDecimal implements Converter {
 
   @Override
   public Schema convertSchema(Schema schema) {
-    Schema converted = Schema.create(Schema.Type.BYTES);
-    return LogicalTypes.bigDecimal().addToSchema(converted);
+    return LogicalTypes.bigDecimal().addToSchema(Schema.create(Schema.Type.BYTES));
   }
 
   @Override

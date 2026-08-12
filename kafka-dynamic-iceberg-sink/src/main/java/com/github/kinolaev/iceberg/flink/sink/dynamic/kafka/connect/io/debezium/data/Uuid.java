@@ -15,8 +15,7 @@ public class Uuid implements Converter {
   @Override
   public Schema convertSchema(Schema schema) {
     if (schema.getType() == Schema.Type.STRING) {
-      Schema converted = Schema.createFixed("uuid_fixed", null, null, 16);
-      return LogicalTypes.uuid().addToSchema(converted);
+      return LogicalTypes.uuid().addToSchema(Schema.createFixed("uuid_fixed", null, null, 16));
     }
     return schema;
   }

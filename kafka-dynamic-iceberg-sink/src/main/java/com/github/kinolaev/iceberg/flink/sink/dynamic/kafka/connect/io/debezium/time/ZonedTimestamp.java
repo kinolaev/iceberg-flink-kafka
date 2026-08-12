@@ -2,32 +2,27 @@ package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium
 
 import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.Converter;
 import java.time.Instant;
-import java.util.function.Function;
 import org.apache.avro.LogicalType;
 import org.apache.avro.LogicalTypes;
 import org.apache.avro.Schema;
 import org.apache.iceberg.avro.AvroSchemaUtil;
 
 public class ZonedTimestamp implements Converter {
-  public static final ZonedTimestamp MILLIS =
-      new ZonedTimestamp(schema -> LogicalTypes.timestampMillis());
-  public static final ZonedTimestamp MICROS =
-      new ZonedTimestamp(schema -> LogicalTypes.timestampMicros());
-  public static final ZonedTimestamp NANOS =
-      new ZonedTimestamp(schema -> LogicalTypes.timestampNanos());
+  public static final ZonedTimestamp MILLIS = new ZonedTimestamp(LogicalTypes.timestampMillis());
+  public static final ZonedTimestamp MICROS = new ZonedTimestamp(LogicalTypes.timestampMicros());
+  public static final ZonedTimestamp NANOS = new ZonedTimestamp(LogicalTypes.timestampNanos());
 
-  private final Function<Schema, LogicalType> logicalType;
+  private final LogicalType logicalType;
 
-  private ZonedTimestamp(Function<Schema, LogicalType> logicalType) {
+  private ZonedTimestamp(LogicalType logicalType) {
     this.logicalType = logicalType;
   }
 
   @Override
   public Schema convertSchema(Schema schema) {
     Schema converted = Schema.create(Schema.Type.LONG);
-    logicalType.apply(schema).addToSchema(converted);
     converted.addProp(AvroSchemaUtil.ADJUST_TO_UTC_PROP, true);
-    return converted;
+    return logicalType.addToSchema(converted);
   }
 
   @Override

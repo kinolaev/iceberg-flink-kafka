@@ -11,9 +11,7 @@ public class MicroTime implements Converter {
 
   @Override
   public Schema convertSchema(Schema schema) {
-    Schema converted = Schema.create(Schema.Type.INT);
-    LogicalTypes.timeMillis().addToSchema(converted);
-    return converted;
+    return LogicalTypes.timeMillis().addToSchema(Schema.create(Schema.Type.INT));
   }
 
   @Override

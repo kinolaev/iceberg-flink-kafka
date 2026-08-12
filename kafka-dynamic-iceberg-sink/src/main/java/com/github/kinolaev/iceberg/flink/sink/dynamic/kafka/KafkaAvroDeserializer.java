@@ -99,14 +99,14 @@ public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
           "io.debezium.time.Time", AddLogicalType.TIME_MILLIS,
           // only millis is supported for now
           // https://github.com/apache/iceberg/blob/apache-iceberg-1.11.0/flink/v2.1/flink/src/main/java/org/apache/iceberg/flink/formats/avro/AvroToRowDataConverters.java#L273-L289
-          "io.debezium.time.MicroTime", MicroTime.INSTANCE,
           // "io.debezium.time.MicroTime", AddLogicalType.TIME_MICROS,
+          "io.debezium.time.MicroTime", MicroTime.INSTANCE,
           "io.debezium.time.NanoTime", NanoTime.INSTANCE,
-          "io.debezium.time.Timestamp", AddLogicalType.TIMESTAMP_MILLIS,
+          "io.debezium.time.Timestamp", AddLogicalType.LOCAL_TIMESTAMP_MILLIS,
           // https://github.com/apache/iceberg/pull/17194
-          // "io.debezium.time.MicroTimestamp", AddLogicalType.TIMESTAMP_MICROS,
+          // "io.debezium.time.MicroTimestamp", AddLogicalType.LOCAL_TIMESTAMP_MICROS,
           "io.debezium.time.MicroTimestamp", MicroTimestamp.INSTANCE,
-          "io.debezium.time.NanoTimestamp", AddLogicalType.TIMESTAMP_NANOS,
+          "io.debezium.time.NanoTimestamp", AddLogicalType.LOCAL_TIMESTAMP_NANOS,
           "io.debezium.time.ZonedTimestamp", ZonedTimestamp.MICROS);
 
   private static class SchemaCacheLoader extends CacheLoader<Schema, Optional<Schema>> {
