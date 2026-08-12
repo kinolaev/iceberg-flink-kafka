@@ -98,7 +98,13 @@ public class KafkaDynamicRecordGenerator
   public void generate(ConsumerRecord<byte[], byte[]> record, Collector<DynamicRecord> out)
       throws Exception {
     GenericRecord key =
-        deserializer.deserialize(record.topic(), true, record.headers(), record.key());
+        routeConfig.field().startsWith("key.")
+            ? deserializer.deserialize(record.topic(), true, record.headers(), record.value())
+            : null;
+    org.apache.avro.Schema keySchema =
+        key == null
+            ? deserializer.getSchema(record.topic(), true, record.headers(), record.key())
+            : key.getSchema();
     GenericRecord value =
         deserializer.deserialize(record.topic(), false, record.headers(), record.value());
 
@@ -107,7 +113,7 @@ public class KafkaDynamicRecordGenerator
     String branch =
         props.getOrDefault(TABLE_COMMIT_BRANCH_PROP.formatted(tableName), defaultCommitBranch);
 
-    Schema schema = schemaCache.get(value.getSchema()).get(key.getSchema());
+    Schema schema = schemaCache.get(value.getSchema()).get(keySchema);
     RowData rowData = mapperCache.get(value.getSchema()).map(value);
 
     List<String> partitionBy =
@@ -122,7 +128,7 @@ public class KafkaDynamicRecordGenerator
       dynamicRecord.setUpsertMode(true);
       dynamicRecord.setEqualityFields(
           Stream.concat(
-                  key.getSchema().getFields().stream().map(this::convertAvroFieldName),
+                  keySchema.getFields().stream().map(this::convertAvroFieldName),
                   spec.fields().stream().map(PartitionField::sourceId).map(schema::findColumnName))
               .collect(Collectors.toSet()));
     }
