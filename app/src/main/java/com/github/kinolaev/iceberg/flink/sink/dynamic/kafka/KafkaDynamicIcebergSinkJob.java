@@ -38,6 +38,10 @@ public class KafkaDynamicIcebergSinkJob {
   private static final String ICEBERG_CATALOG_PREFIX = "iceberg.catalog.";
   private static final String ICEBERG_HADOOP_PREFIX = "iceberg.hadoop.";
 
+  private static final String TABLES_SCHEMA_CASE_INSENSITIVE_PROP =
+      "iceberg.tables.schema-case-insensitive";
+  private static final boolean TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT = false;
+
   public static void main(String[] args) throws Exception {
     ParameterTool parameters = ParameterTool.fromPropertiesFile(args[0]);
     if (args.length > 1) {
@@ -70,6 +74,9 @@ public class KafkaDynamicIcebergSinkJob {
     DynamicIcebergSink.forInput(sourceStream)
         .generator(new KafkaDynamicRecordGenerator(parameters.toMap()))
         .catalogLoader(CatalogLoader.rest(catalogName, hadoopConf, catalogProps))
+        .caseSensitive(
+            !parameters.getBoolean(
+                TABLES_SCHEMA_CASE_INSENSITIVE_PROP, TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT))
         .append();
     env.execute(parameters.get(NAME_PROP, NAME_DEFAULT));
   }
