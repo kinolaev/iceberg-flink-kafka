@@ -15,6 +15,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.ParameterTool;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.sink.dynamic.DynamicIcebergSink;
 import org.apache.iceberg.util.PropertyUtil;
@@ -85,12 +86,18 @@ public class KafkaDynamicIcebergSinkJob {
             !parameters.getBoolean(
                 TABLES_SCHEMA_CASE_INSENSITIVE_PROP, TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT))
         .tableCreator(
-            (catalog, identifier, schema, spec) ->
-                catalog
-                    .buildTable(identifier, schema)
-                    .withPartitionSpec(spec)
-                    .withProperties(tablesAutoCreateProps)
-                    .create())
+            (catalog, identifier, schema, spec) -> {
+              if (identifier.hasNamespace()
+                  && catalog instanceof SupportsNamespaces catalogWithNamespaces
+                  && !catalogWithNamespaces.namespaceExists(identifier.namespace())) {
+                catalogWithNamespaces.createNamespace(identifier.namespace());
+              }
+              return catalog
+                  .buildTable(identifier, schema)
+                  .withPartitionSpec(spec)
+                  .withProperties(tablesAutoCreateProps)
+                  .create();
+            })
         .setAll(tablesWriteProps)
         .append();
     env.execute(parameters.get(NAME_PROP, NAME_DEFAULT));

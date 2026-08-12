@@ -8,10 +8,6 @@ docker compose exec rustfs curl \
 docker compose exec rustfs curl \
   -X PUT http://localhost:9000/iceberg/v1/buckets/warehouse \
   --aws-sigv4 aws:amz:us-east-1:s3 --user rustfs:rustfs
-docker compose exec rustfs curl \
-  -X POST http://localhost:9000/iceberg/v1/warehouse/namespaces \
-  --aws-sigv4 aws:amz:us-east-1:s3 --user rustfs:rustfs \
-  --json '{"namespace":["public"]}'
 ./gradlew shadowJar
 docker compose up
 ```
