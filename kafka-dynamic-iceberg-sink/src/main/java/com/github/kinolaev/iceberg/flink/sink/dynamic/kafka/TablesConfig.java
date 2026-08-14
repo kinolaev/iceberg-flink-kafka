@@ -1,9 +1,12 @@
 package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka;
 
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.SnapshotRef;
 
@@ -11,6 +14,7 @@ record TablesConfig(
     boolean schemaForceOptional,
     ForceCase schemaForceCase,
     String commitBranch,
+    Set<String> idColumns,
     List<String> partitionBy,
     DistributionMode distributionMode,
     int writeParallelism,
@@ -22,6 +26,7 @@ record TablesConfig(
 
   private static final String TABLES_DEFAULT_COMMIT_BRANCH_PROP =
       "iceberg.tables.default-commit-branch";
+  private static final String TABLES_DEFAULT_ID_COLUMNS_PROP = "iceberg.tables.default-id-columns";
   private static final String TABLES_DEFAULT_PARTITION_BY_PROP =
       "iceberg.tables.default-partition-by";
   private static final String TABLES_DISTRIBUTION_MODE_PROP = "iceberg.tables.distribution-mode";
@@ -40,6 +45,9 @@ record TablesConfig(
             .map(ForceCase::fromName)
             .orElse(null),
         props.getOrDefault(TABLES_DEFAULT_COMMIT_BRANCH_PROP, SnapshotRef.MAIN_BRANCH),
+        Optional.ofNullable(props.get(TABLES_DEFAULT_ID_COLUMNS_PROP))
+            .map(TablesConfig::parseIdColumns)
+            .orElse(null),
         Optional.ofNullable(props.get(TABLES_DEFAULT_PARTITION_BY_PROP))
             .map(TablesConfig::parsePartitionBy)
             .orElse(List.of()),
@@ -52,6 +60,12 @@ record TablesConfig(
         Optional.ofNullable(props.get(TABLES_UPSERT_MODE_ENABLED_PROP))
             .map(Boolean::parseBoolean)
             .orElse(false));
+  }
+
+  static Set<String> parseIdColumns(String idColumns) {
+    return Arrays.stream(idColumns.split(","))
+        .map(String::trim)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
   static List<String> parsePartitionBy(String partitionBy) {

@@ -4,13 +4,15 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 
 record TableConfig(
-    LoadingCache<org.apache.avro.Schema, LoadingCache<org.apache.avro.Schema, Schema>> schemaCache,
+    LoadingCache<org.apache.avro.Schema, LoadingCache<Set<String>, Schema>> schemaCache,
     String commitBranch,
+    Set<String> idColumns,
     LoadingCache<Schema, PartitionSpec> specCache,
     DistributionMode distributionMode,
     int writeParallelism,
@@ -21,6 +23,7 @@ record TableConfig(
   private static final String TABLE_SCHEMA_FORCE_CASE_PROP = "iceberg.table.%s.schema-force-case";
 
   private static final String TABLE_COMMIT_BRANCH_PROP = "iceberg.table.%s.commit-branch";
+  private static final String TABLE_ID_COLUMNS_PROP = "iceberg.table.%s.id-columns";
   private static final String TABLE_PARTITION_BY_PROP = "iceberg.table.%s.partition-by";
   private static final String TABLE_DISTRIBUTION_MODE_PROP = "iceberg.table.%s.distribution-mode";
   private static final String TABLE_WRITE_PARALLELISM_PROP = "iceberg.table.%s.write-parallelism";
@@ -34,6 +37,9 @@ record TableConfig(
             .build(schemasCacheLoader(props, tableName, defaultConfig)),
         props.getOrDefault(
             TABLE_COMMIT_BRANCH_PROP.formatted(tableName), defaultConfig.commitBranch()),
+        Optional.ofNullable(props.get(TABLE_ID_COLUMNS_PROP))
+            .map(TablesConfig::parseIdColumns)
+            .orElse(defaultConfig.idColumns()),
         CacheBuilder.newBuilder()
             .weakKeys()
             .build(specCacheLoader(props, tableName, defaultConfig)),
