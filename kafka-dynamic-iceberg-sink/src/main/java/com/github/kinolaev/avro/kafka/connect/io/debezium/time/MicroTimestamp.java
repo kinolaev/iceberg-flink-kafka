@@ -1,6 +1,6 @@
-package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium.time;
+package com.github.kinolaev.avro.kafka.connect.io.debezium.time;
 
-import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.Converter;
+import com.github.kinolaev.avro.Converter;
 import org.apache.avro.LogicalTypes;
 import org.apache.avro.Schema;
 import org.apache.iceberg.avro.AvroSchemaUtil;

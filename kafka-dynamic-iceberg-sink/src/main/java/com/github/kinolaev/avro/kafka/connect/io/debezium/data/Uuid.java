@@ -1,6 +1,6 @@
-package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium.data;
+package com.github.kinolaev.avro.kafka.connect.io.debezium.data;
 
-import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.Converter;
+import com.github.kinolaev.avro.Converter;
 import java.nio.ByteBuffer;
 import java.util.UUID;
 import org.apache.avro.LogicalTypes;

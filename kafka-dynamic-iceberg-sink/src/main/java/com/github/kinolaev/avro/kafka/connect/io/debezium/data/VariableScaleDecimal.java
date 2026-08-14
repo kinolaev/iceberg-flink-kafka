@@ -1,6 +1,6 @@
-package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.io.debezium.data;
+package com.github.kinolaev.avro.kafka.connect.io.debezium.data;
 
-import com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect.Converter;
+import com.github.kinolaev.avro.Converter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;

@@ -15,11 +15,10 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.ParameterTool;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.iceberg.SortOrder;
-import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.sink.dynamic.DynamicIcebergSink;
 import org.apache.iceberg.util.PropertyUtil;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
@@ -34,6 +33,12 @@ public class KafkaDynamicIcebergSinkJob {
   private static final String KAFKA_TOPICS_PROP = "kafka.topics";
   private static final String KAFKA_OFFSETS_PROP = "kafka.offsets";
   private static final String KAFKA_OFFSETS_DEFAULT = "committed,earliest";
+  private static final Set<String> KAFKA_IGNORED =
+      Set.of(
+          KAFKA_TOPICS_PROP,
+          KAFKA_OFFSETS_PROP,
+          KAFKA_PREFIX + ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+          KAFKA_PREFIX + ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG);
 
   private static final String ICEBERG_CATALOG_PROP = "iceberg.catalog";
   private static final String ICEBERG_CATALOG_DEFAULT = "iceberg";
@@ -43,9 +48,6 @@ public class KafkaDynamicIcebergSinkJob {
   private static final String TABLES_SCHEMA_CASE_INSENSITIVE_PROP =
       "iceberg.tables.schema-case-insensitive";
   private static final boolean TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT = false;
-  private static final String TABLES_AUTO_CREATE_SORT_ORDER_BY_ID_COLUMNS_PROP =
-      "iceberg.tables.auto-create-sort-order-by-id-columns";
-  private static final String TABLES_AUTO_CREATE_PROPS_PREFIX = "iceberg.tables.auto-create-props.";
   private static final String TABLES_WRITE_PROPS_PREFIX = "iceberg.tables.write-props.";
 
   public static void main(String[] args) throws Exception {
@@ -53,7 +55,6 @@ public class KafkaDynamicIcebergSinkJob {
     if (args.length > 1) {
       parameters = parameters.mergeWith(ParameterTool.fromPropertiesFile(args[1]));
     }
-
     final String jobName = parameters.get(NAME_PROP, NAME_DEFAULT);
     final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.enableCheckpointing(
@@ -78,10 +79,9 @@ public class KafkaDynamicIcebergSinkJob {
     Map<String, String> catalogProps =
         PropertyUtil.propertiesWithPrefix(parameters.toMap(), ICEBERG_CATALOG_PREFIX);
 
-    boolean tablesAutoCreateSortOrderByIdColumns =
-        parameters.getBoolean(TABLES_AUTO_CREATE_SORT_ORDER_BY_ID_COLUMNS_PROP, false);
-    Map<String, String> tablesAutoCreateProps =
-        PropertyUtil.propertiesWithPrefix(parameters.toMap(), TABLES_AUTO_CREATE_PROPS_PREFIX);
+    boolean tablesSchemaCaseInsensitive =
+        parameters.getBoolean(
+            TABLES_SCHEMA_CASE_INSENSITIVE_PROP, TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT);
     Map<String, String> tablesWriteProps =
         PropertyUtil.propertiesWithPrefix(parameters.toMap(), TABLES_WRITE_PROPS_PREFIX);
 
@@ -89,29 +89,8 @@ public class KafkaDynamicIcebergSinkJob {
         .uidPrefix(jobName)
         .generator(new KafkaDynamicRecordGenerator(parameters.toMap()))
         .catalogLoader(CatalogLoader.rest(catalogName, hadoopConf, catalogProps))
-        .caseSensitive(
-            !parameters.getBoolean(
-                TABLES_SCHEMA_CASE_INSENSITIVE_PROP, TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT))
-        .tableCreator(
-            (catalog, identifier, schema, spec) -> {
-              if (identifier.hasNamespace()
-                  && catalog instanceof SupportsNamespaces catalogWithNamespaces
-                  && !catalogWithNamespaces.namespaceExists(identifier.namespace())) {
-                catalogWithNamespaces.createNamespace(identifier.namespace());
-              }
-              SortOrder sortOrder = SortOrder.unsorted();
-              if (tablesAutoCreateSortOrderByIdColumns) {
-                SortOrder.Builder builder = SortOrder.builderFor(schema);
-                for (int id : schema.identifierFieldIds()) builder.asc(schema.findColumnName(id));
-                sortOrder = builder.build();
-              }
-              return catalog
-                  .buildTable(identifier, schema)
-                  .withPartitionSpec(spec)
-                  .withSortOrder(sortOrder)
-                  .withProperties(tablesAutoCreateProps)
-                  .create();
-            })
+        .caseSensitive(!tablesSchemaCaseInsensitive)
+        .tableCreator(new TableCreatorWithNamespaceSortOrderAndProps(parameters.toMap()))
         .setAll(tablesWriteProps)
         .append();
     env.execute(jobName);
@@ -181,9 +160,7 @@ public class KafkaDynamicIcebergSinkJob {
     return properties.entrySet().stream()
         .filter(
             entry ->
-                entry.getKey().startsWith(KAFKA_PREFIX)
-                    && !KAFKA_TOPICS_PROP.equals(entry.getKey())
-                    && !KAFKA_OFFSETS_PROP.equals(entry.getKey()))
+                entry.getKey().startsWith(KAFKA_PREFIX) && !KAFKA_IGNORED.contains(entry.getKey()))
         .collect(
             Collectors.toMap(
                 entry -> entry.getKey().substring(KAFKA_PREFIX.length()),

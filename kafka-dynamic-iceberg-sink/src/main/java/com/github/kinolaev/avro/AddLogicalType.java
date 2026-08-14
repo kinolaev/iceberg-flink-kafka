@@ -1,4 +1,4 @@
-package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka.connect;
+package com.github.kinolaev.avro;
 
 import java.util.function.ToIntFunction;
 import java.util.function.UnaryOperator;

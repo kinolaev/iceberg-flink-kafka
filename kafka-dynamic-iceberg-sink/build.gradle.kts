@@ -25,6 +25,13 @@ dependencies {
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
+    testImplementation("org.apache.avro:avro:1.12.1")
+    testImplementation("org.apache.flink:flink-streaming-java:2.1.3")
+    testImplementation("org.apache.flink:flink-table-api-java:2.1.3")
+    testImplementation("org.apache.iceberg:iceberg-core:1.11.0")
+    testImplementation("org.apache.iceberg:iceberg-flink-2.1:1.11.0")
+    testImplementation(project(":iceberg-avro-logical-types"))
+
     compileOnly("org.apache.avro:avro:1.12.1")
     compileOnly("org.apache.flink:flink-streaming-java:2.1.3")
     compileOnly("org.apache.flink:flink-table-api-java:2.1.3")
