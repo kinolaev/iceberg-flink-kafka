@@ -3,10 +3,10 @@ package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
@@ -15,7 +15,6 @@ import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.util.Collector;
 import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.Schema;
-import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.flink.sink.AvroGenericRecordToRowDataMapper;
 import org.apache.iceberg.flink.sink.dynamic.DynamicRecord;
 import org.apache.iceberg.flink.sink.dynamic.DynamicRecordGenerator;
@@ -29,7 +28,6 @@ public class KafkaDynamicRecordGenerator
   private final Map<String, String> props;
 
   private RouteConfig routeConfig;
-  private LoadingCache<String, TableConfig> tableConfigCache;
   private LoadingCache<org.apache.avro.Schema, Set<String>> idColumnsCache;
   private LoadingCache<org.apache.avro.Schema, AvroGenericRecordToRowDataMapper> mapperCache;
   private KafkaAvroDeserializer deserializer;
@@ -39,12 +37,8 @@ public class KafkaDynamicRecordGenerator
   }
 
   @Override
-  public void open(OpenContext openContext) {
+  public void open(OpenContext openContext) throws ExecutionException {
     routeConfig = new RouteConfig(props);
-    tableConfigCache =
-        CacheBuilder.newBuilder()
-            .expireAfterAccess(Duration.ofHours(1))
-            .build(new TableConfigCacheLoader(props));
     idColumnsCache = CacheBuilder.newBuilder().weakKeys().build(new IdColumnsCacheLoader());
     mapperCache = CacheBuilder.newBuilder().weakKeys().build(new RowDataMapperCacheLoader());
     deserializer =
@@ -61,37 +55,38 @@ public class KafkaDynamicRecordGenerator
     GenericRecord value =
         deserializer.deserialize(record.topic(), false, record.headers(), record.value());
 
-    String tableName = routeConfig.getTableName(record.topic(), record.headers(), key, value);
-    TableConfig tableConfig = tableConfigCache.get(tableName);
-    Set<String> idColumns = tableConfig.idColumns();
-    if (idColumns == null) {
-      org.apache.avro.Schema keySchema =
-          key == null
-              ? deserializer.getSchema(record.topic(), true, record.headers(), record.key())
-              : key.getSchema();
-      idColumns = idColumnsCache.get(keySchema);
-    }
-    Schema schema = tableConfig.schemaCache().get(value.getSchema()).get(idColumns);
+    for (TableConfig tableConfig :
+        routeConfig.getTableConfigs(record.topic(), record.headers(), key, value)) {
+      Set<String> idColumns = tableConfig.idColumns();
+      if (idColumns == null) {
+        org.apache.avro.Schema keySchema =
+            key == null
+                ? deserializer.getSchema(record.topic(), true, record.headers(), record.key())
+                : key.getSchema();
+        idColumns = idColumnsCache.get(keySchema);
+      }
+      Schema schema = tableConfig.schemaCache().get(value.getSchema()).get(idColumns);
 
-    DynamicRecord dynamicRecord =
-        new DynamicRecord(
-            TableIdentifier.parse(tableName),
-            tableConfig.commitBranch(),
-            schema,
-            mapperCache.get(value.getSchema()).map(value),
-            tableConfig.specCache().get(schema),
-            tableConfig.distributionMode(),
-            tableConfig.writeParallelism());
-    if (tableConfig.upsertModeEnabled()) {
-      dynamicRecord.setUpsertMode(true);
-      dynamicRecord.setEqualityFields(
-          Stream.concat(
-                  dynamicRecord.schema().identifierFieldIds().stream(),
-                  dynamicRecord.spec().fields().stream().map(PartitionField::sourceId))
-              .map(dynamicRecord.schema()::findColumnName)
-              .collect(Collectors.toCollection(LinkedHashSet::new)));
+      DynamicRecord dynamicRecord =
+          new DynamicRecord(
+              tableConfig.identifier(),
+              tableConfig.commitBranch(),
+              schema,
+              mapperCache.get(value.getSchema()).map(value),
+              tableConfig.specCache().get(schema),
+              tableConfig.distributionMode(),
+              tableConfig.writeParallelism());
+      if (tableConfig.upsertModeEnabled()) {
+        dynamicRecord.setUpsertMode(true);
+        dynamicRecord.setEqualityFields(
+            Stream.concat(
+                    dynamicRecord.schema().identifierFieldIds().stream(),
+                    dynamicRecord.spec().fields().stream().map(PartitionField::sourceId))
+                .map(dynamicRecord.schema()::findColumnName)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+      }
+      out.collect(dynamicRecord);
     }
-    out.collect(dynamicRecord);
   }
 
   private static class IdColumnsCacheLoader

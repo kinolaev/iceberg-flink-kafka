@@ -8,8 +8,11 @@ import java.util.Set;
 import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.catalog.TableIdentifier;
 
 record TableConfig(
+    TableIdentifier identifier,
+    String routeRegex,
     LoadingCache<org.apache.avro.Schema, LoadingCache<Set<String>, Schema>> schemaCache,
     String commitBranch,
     Set<String> idColumns,
@@ -17,6 +20,8 @@ record TableConfig(
     DistributionMode distributionMode,
     int writeParallelism,
     boolean upsertModeEnabled) {
+
+  private static final String TABLE_SCHEMA_ROUTE_REGEX_PROP = "iceberg.table.%s.route-regex";
 
   private static final String TABLE_SCHEMA_FORCE_OPTIONAL_PROP =
       "iceberg.table.%s.schema-force-optional";
@@ -32,6 +37,8 @@ record TableConfig(
 
   TableConfig(Map<String, String> props, String tableName, TablesConfig defaultConfig) {
     this(
+        TableIdentifier.parse(tableName),
+        props.get(TABLE_SCHEMA_ROUTE_REGEX_PROP),
         CacheBuilder.newBuilder()
             .weakKeys()
             .build(schemasCacheLoader(props, tableName, defaultConfig)),
