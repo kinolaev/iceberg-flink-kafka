@@ -22,6 +22,8 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class KafkaDynamicIcebergSinkJob {
   private static final String NAME_PROP = "name";
@@ -33,28 +35,59 @@ public class KafkaDynamicIcebergSinkJob {
   private static final String KAFKA_TOPICS_PROP = "kafka.topics";
   private static final String KAFKA_OFFSETS_PROP = "kafka.offsets";
   private static final String KAFKA_OFFSETS_DEFAULT = "committed,earliest";
+  private static final String KAFKA_KEY_DESERIALIZER_PROP =
+      KAFKA_PREFIX + ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
+  private static final String KAFKA_KEY_DESERIALIZER_DEFAULT =
+      "io.confluent.kafka.serializers.KafkaAvroDeserializer";
+  private static final String KAFKA_VALUE_DESERIALIZER_PROP =
+      KAFKA_PREFIX + ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
+  private static final String KAFKA_VALUE_DESERIALIZER_DEFAULT =
+      "io.confluent.kafka.serializers.KafkaAvroDeserializer";
   private static final Set<String> KAFKA_IGNORED =
       Set.of(
           KAFKA_TOPICS_PROP,
           KAFKA_OFFSETS_PROP,
-          KAFKA_PREFIX + ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-          KAFKA_PREFIX + ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG);
+          KAFKA_KEY_DESERIALIZER_PROP,
+          KAFKA_VALUE_DESERIALIZER_PROP);
 
   private static final String ICEBERG_CATALOG_PROP = "iceberg.catalog";
   private static final String ICEBERG_CATALOG_DEFAULT = "iceberg";
   private static final String ICEBERG_CATALOG_PREFIX = "iceberg.catalog.";
   private static final String ICEBERG_HADOOP_PREFIX = "iceberg.hadoop.";
 
+  private static final String TABLES_AUTO_CREATE_ENABLED_PROP =
+      "iceberg.tables.auto-create-enabled";
+  private static final String TABLES_EVOLVE_SCHEMA_ENABLED_PROP =
+      "iceberg.tables.evolve-schema-enabled";
   private static final String TABLES_SCHEMA_CASE_INSENSITIVE_PROP =
       "iceberg.tables.schema-case-insensitive";
   private static final boolean TABLES_SCHEMA_CASE_INSENSITIVE_DEFAULT = false;
   private static final String TABLES_WRITE_PROPS_PREFIX = "iceberg.tables.write-props.";
+
+  private static final Logger LOG = LoggerFactory.getLogger(KafkaDynamicIcebergSinkJob.class);
 
   public static void main(String[] args) throws Exception {
     ParameterTool parameters = ParameterTool.fromPropertiesFile(args[0]);
     if (args.length > 1) {
       parameters = parameters.mergeWith(ParameterTool.fromPropertiesFile(args[1]));
     }
+
+    if (!KAFKA_KEY_DESERIALIZER_DEFAULT.equals(parameters.get(KAFKA_KEY_DESERIALIZER_PROP))) {
+      throw new IllegalArgumentException(
+          "%s must be %s".formatted(KAFKA_KEY_DESERIALIZER_PROP, KAFKA_KEY_DESERIALIZER_DEFAULT));
+    }
+    if (!KAFKA_VALUE_DESERIALIZER_DEFAULT.equals(parameters.get(KAFKA_VALUE_DESERIALIZER_PROP))) {
+      throw new IllegalArgumentException(
+          "%s must be %s"
+              .formatted(KAFKA_VALUE_DESERIALIZER_PROP, KAFKA_VALUE_DESERIALIZER_DEFAULT));
+    }
+    if (!parameters.getBoolean(TABLES_AUTO_CREATE_ENABLED_PROP, false)) {
+      LOG.warn("Disabling {} is not supported, ignoring", TABLES_AUTO_CREATE_ENABLED_PROP);
+    }
+    if (!parameters.getBoolean(TABLES_EVOLVE_SCHEMA_ENABLED_PROP, false)) {
+      LOG.warn("Disabling {} is not supported, ignoring", TABLES_EVOLVE_SCHEMA_ENABLED_PROP);
+    }
+
     final String jobName = parameters.get(NAME_PROP, NAME_DEFAULT);
     final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.enableCheckpointing(
