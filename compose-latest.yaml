@@ -1,0 +1,11 @@
+include:
+  - compose/compose.yaml
+
+services:
+  jobmanager:
+    image: ghcr.io/kinolaev/iceberg-flink-kafka:latest
+    volumes:
+      - ./compose/flink/usrconf:/opt/flink/usrconf
+
+  taskmanager:
+    image: ghcr.io/kinolaev/iceberg-flink-kafka:latest

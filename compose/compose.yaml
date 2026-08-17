@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: quay.io/debezium/postgres:18-alpine
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./compose/postgres/initdb.d:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_PASSWORD=postgres
+
+  debezium:
+    depends_on:
+      - postgres
+      - redpanda
+    build: compose/debezium
+    volumes:
+      - debezium-conf:/debezium/config
+      - debezium-data:/debezium/data
+      - ./compose/debezium/application.properties:/debezium/config/application.properties
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.12
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092
+      - --advertise-kafka-addr internal://redpanda:9092
+      - --schema-registry-addr internal://0.0.0.0:8081
+      - --mode dev-container
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.8.0
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - SCHEMAREGISTRY_ENABLED=true
+      - SCHEMAREGISTRY_URLS=redpanda:8081
+    ports:
+      - 8080:8080
+
+  jobmanager:
+    depends_on:
+      - redpanda
+      - rustfs
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    command:
+      - jobmanager
+    ports:
+      - 8081:8081
+
+  taskmanager:
+    depends_on:
+      - jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    command:
+      - taskmanager
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.1
+    volumes:
+      - rustfs-data:/data
+    environment:
+      - RUSTFS_ACCESS_KEY=rustfs
+      - RUSTFS_SECRET_KEY=rustfs
+    ports:
+      - 9001:9001
+
+  trino:
+    image: trinodb/trino:483
+    volumes:
+      - ./compose/trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
+
+volumes:
+  postgres-data:
+  debezium-conf:
+  debezium-data:
+  redpanda-data:
+  rustfs-data:
