@@ -2,16 +2,17 @@ package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka;
 
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.kafka.common.header.Headers;
 
 class RouteConfig {
   private static final String TABLES_PROP = "iceberg.tables";
+  private static final String TABLES_CACHE_TIMEOUT = "iceberg.tables.cache-timeout";
   private static final String TABLES_DYNAMIC_ENABLED_PROP = "iceberg.tables.dynamic-enabled";
   private static final String TABLES_ROUTE_FIELD = "iceberg.tables.route-field";
   private static final String TABLES_ROUTE_FIELD_REGEX_PROP = "iceberg.tables.route-field-regex";
@@ -30,7 +31,8 @@ class RouteConfig {
   RouteConfig(Map<String, String> props) {
     this(
         CacheBuilder.newBuilder()
-            .expireAfterAccess(Duration.ofHours(1))
+            .expireAfterAccess(
+                Long.parseLong(props.getOrDefault(TABLES_CACHE_TIMEOUT, "3600")), TimeUnit.MINUTES)
             .build(new TableConfigCacheLoader(props)),
         Boolean.parseBoolean(props.getOrDefault(TABLES_DYNAMIC_ENABLED_PROP, "false"))
             ? null

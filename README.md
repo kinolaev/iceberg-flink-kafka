@@ -22,7 +22,7 @@ Then build the application and run the other services:
 ./gradlew :kafka-dynamic-iceberg-sink:shadowJar
 docker compose up
 ```
-Alternatively, you can use the latest prebuilt container image:
+Alternatively, you can use the latest [prebuilt container image](https://github.com/kinolaev/iceberg-flink-kafka/pkgs/container/iceberg-flink-kafka):
 ```bash
 docker compose -f compose-latest.yaml up
 ```
