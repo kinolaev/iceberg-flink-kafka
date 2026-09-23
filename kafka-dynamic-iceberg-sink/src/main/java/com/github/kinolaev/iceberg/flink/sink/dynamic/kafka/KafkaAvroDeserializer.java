@@ -18,21 +18,10 @@ import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.iceberg.avro.IcebergLogicalTypes;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.header.Headers;
 
 public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
-  static {
-    // https://github.com/confluentinc/schema-registry/pull/4454
-    try {
-      Class.forName("io.confluent.kafka.schemaregistry.avro.AvroSchemaUtils");
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException(e);
-    }
-    IcebergLogicalTypes.register();
-  }
-
   private final LoadingCache<Schema, Optional<Schema>> schemaCache =
       CacheBuilder.newBuilder().weakKeys().build(new SchemaCacheLoader());
 
@@ -48,7 +37,7 @@ public class KafkaAvroDeserializer extends AbstractKafkaAvroDeserializer {
     return (GenericRecord) ValueConverter.get().apply(value.getSchema(), value, schema);
   }
 
-  // https://github.com/confluentinc/schema-registry/blob/v8.3.0/avro-serializer/src/main/java/io/confluent/kafka/serializers/AbstractKafkaAvroDeserializer.java#L505-L533
+  // https://github.com/confluentinc/schema-registry/blob/v8.3.2/avro-serializer/src/main/java/io/confluent/kafka/serializers/AbstractKafkaAvroDeserializer.java#L508-L536
   public Schema getSchema(String topic, boolean isKey, Headers headers, byte[] payload) {
     SchemaId schemaId = new SchemaId(AvroSchema.TYPE);
     try (SchemaIdDeserializer schemaIdDeserializer = schemaIdDeserializer(isKey)) {

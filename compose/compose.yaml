@@ -3,7 +3,7 @@ services:
     image: quay.io/debezium/postgres:18-alpine
     volumes:
       - postgres-data:/var/lib/postgresql
-      - ./compose/postgres/initdb.d:/docker-entrypoint-initdb.d
+      - ./postgres/initdb.d:/docker-entrypoint-initdb.d
     environment:
       - POSTGRES_PASSWORD=postgres
 
@@ -11,11 +11,11 @@ services:
     depends_on:
       - postgres
       - redpanda
-    build: compose/debezium
+    build: debezium
     volumes:
       - debezium-conf:/debezium/config
       - debezium-data:/debezium/data
-      - ./compose/debezium/application.properties:/debezium/config/application.properties
+      - ./debezium/application.properties:/debezium/config/application.properties
 
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v26.1.12
@@ -58,7 +58,7 @@ services:
       - taskmanager
 
   rustfs:
-    image: rustfs/rustfs:1.0.0-rc.1
+    image: rustfs/rustfs:1.0.0
     volumes:
       - rustfs-data:/data
     environment:
@@ -70,7 +70,7 @@ services:
   trino:
     image: trinodb/trino:483
     volumes:
-      - ./compose/trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
+      - ./trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
 
 volumes:
   postgres-data:

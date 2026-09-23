@@ -1,7 +1,5 @@
 *
 !/gradle/libs.versions.toml
-!/iceberg-avro-logical-types/src
-!/iceberg-avro-logical-types/build.gradle.kts
 !/kafka-dynamic-iceberg-sink/src
 !/kafka-dynamic-iceberg-sink/build.gradle.kts
 !/gradle.properties

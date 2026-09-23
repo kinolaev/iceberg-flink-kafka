@@ -25,22 +25,20 @@ dependencies {
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-    testImplementation("org.apache.avro:avro:1.12.1")
+    testImplementation("org.apache.avro:avro:1.12.2")
     testImplementation("org.apache.flink:flink-streaming-java:2.1.3")
     testImplementation("org.apache.flink:flink-table-api-java:2.1.3")
     testImplementation("org.apache.iceberg:iceberg-core:1.11.0")
     testImplementation("org.apache.iceberg:iceberg-flink-2.1:1.11.0")
-    testImplementation(project(":iceberg-avro-logical-types"))
 
-    compileOnly("org.apache.avro:avro:1.12.1")
+    compileOnly("org.apache.avro:avro:1.12.2")
     compileOnly("org.apache.flink:flink-streaming-java:2.1.3")
     compileOnly("org.apache.flink:flink-table-api-java:2.1.3")
     compileOnly("org.apache.hadoop:hadoop-common:3.4.3")
     compileOnly("org.apache.iceberg:iceberg-core:1.11.0")
     compileOnly("org.apache.iceberg:iceberg-flink-2.1:1.11.0")
-    compileOnly(project(":iceberg-avro-logical-types"))
 
-    implementation("io.confluent:kafka-avro-serializer:8.3.0") {
+    implementation("io.confluent:kafka-avro-serializer:8.3.2") {
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-annotations")
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")

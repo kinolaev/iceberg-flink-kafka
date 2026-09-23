@@ -17,5 +17,4 @@ RUN mkdir -p /opt/flink/lib/iceberg && cd /opt/flink/lib/iceberg && \
     curl -LO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-api/${HADOOP_VERSION}/hadoop-client-api-${HADOOP_VERSION}.jar && \
     curl -LO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-runtime/${HADOOP_VERSION}/hadoop-client-runtime-${HADOOP_VERSION}.jar
 
-COPY --from=build --chown=flink:flink /home/gradle/project/iceberg-avro-logical-types/build/libs/iceberg-avro-logical-types-${ICEBERG_VERSION}-all.jar /opt/flink/lib/iceberg/
 COPY --from=build --chown=flink:flink /home/gradle/project/kafka-dynamic-iceberg-sink/build/libs/kafka-dynamic-iceberg-sink-all.jar /opt/flink/usrlib/
