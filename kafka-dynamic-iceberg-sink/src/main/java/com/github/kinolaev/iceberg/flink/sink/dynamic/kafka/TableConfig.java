@@ -38,7 +38,7 @@ record TableConfig(
   TableConfig(Map<String, String> props, String tableName, TablesConfig defaultConfig) {
     this(
         TableIdentifier.parse(tableName),
-        props.get(TABLE_SCHEMA_ROUTE_REGEX_PROP),
+        props.get(TABLE_SCHEMA_ROUTE_REGEX_PROP.formatted(tableName)),
         CacheBuilder.newBuilder()
             .weakKeys()
             .build(schemasCacheLoader(props, tableName, defaultConfig)),

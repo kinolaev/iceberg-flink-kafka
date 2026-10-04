@@ -72,7 +72,7 @@ class RouteConfig {
     return tableConfigs == null
         ? List.of(tableConfigCache.getUnchecked(routeValue))
         : tableConfigs.stream()
-            .filter(t -> routeValue.matches(t.routeRegex()))
+            .filter(t -> t.routeRegex() != null && routeValue.matches(t.routeRegex()))
             .map(TableConfig::identifier)
             .map(TableIdentifier::toString)
             .map(tableConfigCache::getUnchecked)
