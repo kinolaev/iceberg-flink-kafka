@@ -33,7 +33,7 @@ class RouteConfig {
     this(
         CacheBuilder.newBuilder()
             .expireAfterAccess(
-                Long.parseLong(props.getOrDefault(TABLES_CACHE_TIMEOUT, "3600")), TimeUnit.MINUTES)
+                Long.parseLong(props.getOrDefault(TABLES_CACHE_TIMEOUT, "3600")), TimeUnit.SECONDS)
             .build(new TableConfigCacheLoader(props)),
         Boolean.parseBoolean(props.getOrDefault(TABLES_DYNAMIC_ENABLED_PROP, "false"))
             ? null
