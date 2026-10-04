@@ -44,7 +44,7 @@ record TableConfig(
             .build(schemasCacheLoader(props, tableName, defaultConfig)),
         props.getOrDefault(
             TABLE_COMMIT_BRANCH_PROP.formatted(tableName), defaultConfig.commitBranch()),
-        Optional.ofNullable(props.get(TABLE_ID_COLUMNS_PROP))
+        Optional.ofNullable(props.get(TABLE_ID_COLUMNS_PROP.formatted(tableName)))
             .map(TablesConfig::parseIdColumns)
             .orElse(defaultConfig.idColumns()),
         CacheBuilder.newBuilder()
