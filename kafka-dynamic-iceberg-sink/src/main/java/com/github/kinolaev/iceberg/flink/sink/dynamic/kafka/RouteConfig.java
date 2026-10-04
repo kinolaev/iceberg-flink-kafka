@@ -88,8 +88,8 @@ class RouteConfig {
           switch (path[0]) {
             case "topic" -> topic;
             case "headers" -> new String(headers.lastHeader(path[1]).value());
-            case "key" -> (String) key.get(path[1]);
-            case "value" -> (String) value.get(path[1]);
+            case "key" -> key.get(path[1]).toString();
+            case "value" -> value.get(path[1]).toString();
             default -> throw new IllegalArgumentException("Unexpected record key");
           };
     } catch (Exception cause) {

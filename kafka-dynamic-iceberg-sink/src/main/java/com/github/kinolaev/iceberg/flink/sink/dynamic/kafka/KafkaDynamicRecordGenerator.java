@@ -50,7 +50,7 @@ public class KafkaDynamicRecordGenerator
       throws Exception {
     GenericRecord key =
         routeConfig.needsKey()
-            ? deserializer.deserialize(record.topic(), true, record.headers(), record.value())
+            ? deserializer.deserialize(record.topic(), true, record.headers(), record.key())
             : null;
     GenericRecord value =
         deserializer.deserialize(record.topic(), false, record.headers(), record.value());
