@@ -7,6 +7,6 @@ enum ForceCase {
   LOWER;
 
   static ForceCase fromName(String caseName) {
-    return valueOf(caseName.toUpperCase(Locale.ENGLISH));
+    return valueOf(caseName.toUpperCase(Locale.ROOT));
   }
 }

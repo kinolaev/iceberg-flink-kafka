@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nonnull;
@@ -47,9 +48,13 @@ class SchemaCacheLoader extends CacheLoader<Set<String>, Schema> {
     return switch (forceCase) {
       case null -> newField;
       case UPPER ->
-          Types.NestedField.from(newField).withName(newField.name().toUpperCase()).build();
+          Types.NestedField.from(newField)
+              .withName(newField.name().toUpperCase(Locale.ROOT))
+              .build();
       case LOWER ->
-          Types.NestedField.from(newField).withName(newField.name().toLowerCase()).build();
+          Types.NestedField.from(newField)
+              .withName(newField.name().toLowerCase(Locale.ROOT))
+              .build();
     };
   }
 }

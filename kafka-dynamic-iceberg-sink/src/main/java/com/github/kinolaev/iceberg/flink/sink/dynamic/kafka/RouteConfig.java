@@ -3,6 +3,7 @@ package com.github.kinolaev.iceberg.flink.sink.dynamic.kafka;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -99,8 +100,8 @@ class RouteConfig {
     }
     return switch (forceCase) {
       case null -> routeValue;
-      case UPPER -> routeValue.toUpperCase();
-      case LOWER -> routeValue.toLowerCase();
+      case UPPER -> routeValue.toUpperCase(Locale.ROOT);
+      case LOWER -> routeValue.toLowerCase(Locale.ROOT);
     };
   }
 }
