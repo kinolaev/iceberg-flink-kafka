@@ -8,7 +8,7 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
-    id("com.gradleup.shadow") version "9.4.3"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 repositories {
@@ -25,38 +25,52 @@ dependencies {
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
+    testImplementation(libs.guava)
     testImplementation("org.apache.avro:avro:1.12.2")
-    testImplementation("org.apache.flink:flink-streaming-java:2.1.3")
-    testImplementation("org.apache.flink:flink-table-api-java:2.1.3")
-    testImplementation("org.apache.iceberg:iceberg-core:1.11.0")
-    testImplementation("org.apache.iceberg:iceberg-flink-2.1:1.11.0")
+    testImplementation("org.apache.flink:flink-streaming-java:2.2.1")
+    testImplementation("org.apache.flink:flink-table-api-java:2.2.1")
+    testImplementation("org.apache.iceberg:iceberg-core:1.12.0")
+    testImplementation("org.apache.iceberg:iceberg-flink-2.2:1.12.0")
 
+    compileOnly(libs.guava)
     compileOnly("org.apache.avro:avro:1.12.2")
-    compileOnly("org.apache.flink:flink-streaming-java:2.1.3")
-    compileOnly("org.apache.flink:flink-table-api-java:2.1.3")
+    compileOnly("org.apache.flink:flink-streaming-java:2.2.1")
+    compileOnly("org.apache.flink:flink-table-api-java:2.2.1")
     compileOnly("org.apache.hadoop:hadoop-common:3.4.3")
-    compileOnly("org.apache.iceberg:iceberg-core:1.11.0")
-    compileOnly("org.apache.iceberg:iceberg-flink-2.1:1.11.0")
+    compileOnly("org.apache.iceberg:iceberg-core:1.12.0")
+    compileOnly("org.apache.iceberg:iceberg-flink-2.2:1.12.0")
 
     implementation("io.confluent:kafka-avro-serializer:8.3.2") {
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-annotations")
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")
       exclude(group = "com.github.luben", module = "zstd-jni")
+      exclude(group = "com.google.code.findbugs", module = "jsr305")
       exclude(group = "com.google.errorprone", module = "error_prone_annotations")
+      exclude(group = "com.google.guava", module = "failureaccess")
+      exclude(group = "com.google.guava", module = "guava")
+      exclude(group = "com.google.guava", module = "listenablefuture")
+      exclude(group = "com.google.j2objc", module = "j2objc-annotations")
+      exclude(group = "commons-io", module = "commons-io")
       exclude(group = "org.apache.avro", module = "avro")
+      exclude(group = "org.apache.commons", module = "commons-compress")
+      exclude(group = "org.apache.commons", module = "commons-lang3")
       exclude(group = "org.apache.httpcomponents.client5", module = "httpclient5")
       exclude(group = "org.checkerframework", module = "checker-qual")
       exclude(group = "org.slf4j", module = "slf4j-api")
+      exclude(group = "org.xerial.snappy", module = "snappy-java")
+      exclude(group = "org.yaml", module = "snakeyaml")
     }
-    implementation("org.apache.flink:flink-connector-kafka:5.0.0-2.1") {
+    implementation("org.apache.flink:flink-connector-kafka:5.0.0-2.2") {
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-annotations")
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
       exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")
       exclude(group = "com.github.luben", module = "zstd-jni")
+      exclude(group = "org.apache.commons", module = "commons-lang3")
       exclude(group = "org.slf4j", module = "slf4j-api")
+      exclude(group = "org.xerial.snappy", module = "snappy-java")
     }
-    implementation("org.apache.flink:flink-metrics-dropwizard:2.1.3") {
+    implementation("org.apache.flink:flink-metrics-dropwizard:2.2.1") {
       exclude(group = "org.slf4j", module = "slf4j-api")
     }
 }
@@ -88,6 +102,9 @@ tasks.shadowJar {
     relocate("org.apache.hc.client5", "org.apache.iceberg.shaded.org.apache.hc.client5")
     relocate("org.apache.hc.core5", "org.apache.iceberg.shaded.org.apache.hc.core5")
     relocate("org.checkerframework.checker", "org.apache.iceberg.shaded.org.checkerframework.checker")
+    relocate("com.google.common", "org.apache.flink.shaded.guava33.com.google.common")
+    relocate("com.google.thirdparty", "org.apache.flink.shaded.guava33.com.google.thirdparty")
+    relocate("org.yaml.snakeyaml", "org.apache.flink.shaded.jackson2.org.yaml.snakeyaml")
 }
 
 tasks.named<Test>("test") {

@@ -32,9 +32,7 @@ public class ZonedTimestamp implements Converter {
       return instant.toEpochMilli();
     }
     if (schema.getLogicalType() instanceof LogicalTypes.TimestampMicros) {
-      // https://github.com/apache/iceberg/pull/17194
-      // int microsOfSecond = instant.getNano() / 1000;
-      int microsOfSecond = instant.getNano() / 1_000_000 * 1000;
+      int microsOfSecond = instant.getNano() / 1000;
       return Math.addExact(Math.multiplyExact(instant.getEpochSecond(), 1000_000), microsOfSecond);
     }
     if (schema.getLogicalType() instanceof LogicalTypes.TimestampNanos) {

@@ -56,7 +56,7 @@ record TablesConfig(
             .orElse(null),
         Optional.ofNullable(props.get(TABLES_WRITE_PARALLELISM_PROP))
             .map(Integer::parseInt)
-            .orElse(-1),
+            .orElse(Integer.MAX_VALUE),
         Optional.ofNullable(props.get(TABLES_UPSERT_MODE_ENABLED_PROP))
             .map(Boolean::parseBoolean)
             .orElse(false));

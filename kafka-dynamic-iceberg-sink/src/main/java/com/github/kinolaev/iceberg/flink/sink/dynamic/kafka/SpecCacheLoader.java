@@ -19,7 +19,7 @@ class SpecCacheLoader extends CacheLoader<Schema, PartitionSpec> {
     this.partitionBy = partitionBy;
   }
 
-  // https://github.com/apache/iceberg/blob/apache-iceberg-1.11.0/kafka-connect/kafka-connect/src/main/java/org/apache/iceberg/connect/data/SchemaUtils.java#L153-L210
+  // https://github.com/apache/iceberg/blob/apache-iceberg-1.12.0/kafka-connect/kafka-connect/src/main/java/org/apache/iceberg/connect/data/SchemaUtils.java#L156-L213
   @Override
   public @Nonnull PartitionSpec load(@Nonnull Schema schema) {
     if (partitionBy.isEmpty()) {
