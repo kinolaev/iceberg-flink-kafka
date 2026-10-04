@@ -35,7 +35,6 @@ class TableCreatorWithNamespaceSortOrderAndProps implements TableCreator {
             TABLES_AUTO_CREATE_SORT_ORDER_BY_ID_COLUMNS_DEFAULT);
     this.defaultTableProps =
         PropertyUtil.propertiesWithPrefix(props, TABLES_AUTO_CREATE_PROPS_PREFIX);
-    ;
   }
 
   @Override

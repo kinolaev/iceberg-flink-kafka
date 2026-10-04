@@ -6,7 +6,6 @@ public interface Converter {
   default Schema convertSchema(Schema schema) {
     return schema;
   }
-  ;
 
   default Object convertValue(Object value, Schema schema) {
     return value;
