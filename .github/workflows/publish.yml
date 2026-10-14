@@ -35,6 +35,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v7
         with:
+          secrets: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
