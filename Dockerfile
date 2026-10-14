@@ -8,11 +8,12 @@ RUN --mount=type=cache,uid=1000,gid=1000,target=/home/gradle/.gradle/caches grad
 FROM flink:2.2.1-java21
 
 ARG ICEBERG_VERSION=1.12.0
+ARG ICEBERG_KINOLAEV_VERSION=${ICEBERG_VERSION}.2
 ARG HADOOP_VERSION=3.4.3
 
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     mkdir -p /opt/flink/lib/iceberg && cd /opt/flink/lib/iceberg && \
-    curl -LO https://kinolaev:${GITHUB_TOKEN}@maven.pkg.github.com/kinolaev/iceberg/org/apache/iceberg/iceberg-flink-runtime-2.2/${ICEBERG_VERSION}/iceberg-flink-runtime-2.2-${ICEBERG_VERSION}.2.jar && \
+    curl -LO https://kinolaev:${GITHUB_TOKEN}@maven.pkg.github.com/kinolaev/iceberg/org/apache/iceberg/iceberg-flink-runtime-2.2/${ICEBERG_KINOLAEV_VERSION}/iceberg-flink-runtime-2.2-${ICEBERG_KINOLAEV_VERSION}.jar && \
     curl -LO https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/${ICEBERG_VERSION}/iceberg-aws-bundle-${ICEBERG_VERSION}.jar && \
     mkdir -p /opt/flink/lib/hadoop && cd /opt/flink/lib/hadoop && \
     curl -LO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-api/${HADOOP_VERSION}/hadoop-client-api-${HADOOP_VERSION}.jar && \
