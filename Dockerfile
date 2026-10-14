@@ -8,7 +8,7 @@ RUN --mount=type=cache,uid=1000,gid=1000,target=/home/gradle/.gradle/caches grad
 FROM flink:2.2.1-java21
 
 ARG ICEBERG_VERSION=1.12.0
-ARG ICEBERG_KINOLAEV_VERSION=${ICEBERG_VERSION}.2
+ARG ICEBERG_KINOLAEV_VERSION=${ICEBERG_VERSION}.3
 ARG HADOOP_VERSION=3.4.3
 
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
