@@ -13,10 +13,10 @@ ARG HADOOP_VERSION=3.4.3
 
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     mkdir -p /opt/flink/lib/iceberg && cd /opt/flink/lib/iceberg && \
-    curl -LO https://kinolaev:${GITHUB_TOKEN}@maven.pkg.github.com/kinolaev/iceberg/org/apache/iceberg/iceberg-flink-runtime-2.2/${ICEBERG_KINOLAEV_VERSION}/iceberg-flink-runtime-2.2-${ICEBERG_KINOLAEV_VERSION}.jar && \
-    curl -LO https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/${ICEBERG_VERSION}/iceberg-aws-bundle-${ICEBERG_VERSION}.jar && \
+    curl -fsSLO https://kinolaev:${GITHUB_TOKEN}@maven.pkg.github.com/kinolaev/iceberg/org/apache/iceberg/iceberg-flink-runtime-2.2/${ICEBERG_KINOLAEV_VERSION}/iceberg-flink-runtime-2.2-${ICEBERG_KINOLAEV_VERSION}.jar && \
+    curl -fsSLO https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/${ICEBERG_VERSION}/iceberg-aws-bundle-${ICEBERG_VERSION}.jar && \
     mkdir -p /opt/flink/lib/hadoop && cd /opt/flink/lib/hadoop && \
-    curl -LO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-api/${HADOOP_VERSION}/hadoop-client-api-${HADOOP_VERSION}.jar && \
-    curl -LO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-runtime/${HADOOP_VERSION}/hadoop-client-runtime-${HADOOP_VERSION}.jar
+    curl -fsSLO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-api/${HADOOP_VERSION}/hadoop-client-api-${HADOOP_VERSION}.jar && \
+    curl -fsSLO https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-runtime/${HADOOP_VERSION}/hadoop-client-runtime-${HADOOP_VERSION}.jar
 
 COPY --from=build --chown=flink:flink /home/gradle/project/kafka-dynamic-iceberg-sink/build/libs/kafka-dynamic-iceberg-sink-all.jar /opt/flink/usrlib/
